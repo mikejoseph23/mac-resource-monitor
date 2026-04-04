@@ -12,5 +12,10 @@ xcuserdata/
 .AppleDouble
 .LSOverride
 
+# Build artifacts
+.build/
+*.app/
+*.zip
+
 # Claude
 .claude/settings.local.json
