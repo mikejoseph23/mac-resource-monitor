@@ -1,7 +1,13 @@
 import SwiftUI
 
+enum DashboardTab: String, CaseIterable {
+    case dashboard = "Dashboard"
+    case processes = "Processes"
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var metricsManager: MetricsManager
+    @State private var selectedTab: DashboardTab = .dashboard
 
     private let columns = [
         GridItem(.flexible(), spacing: 14),
@@ -16,29 +22,34 @@ struct DashboardView: View {
 
             Divider()
 
-            // Main content
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Metric cards grid
-                    LazyVGrid(columns: columns, spacing: 14) {
-                        cpuCard
-                        memoryCard
-                        gpuCard
-                        diskCard
-                        networkCard
-                        thermalCard
-                    }
+            // Tab content
+            switch selectedTab {
+            case .dashboard:
+                ScrollView {
+                    VStack(spacing: 16) {
+                        LazyVGrid(columns: columns, spacing: 14) {
+                            cpuCard
+                            memoryCard
+                            gpuCard
+                            diskCard
+                            networkCard
+                            thermalCard
+                        }
 
-                    // AI Backends
-                    aiBackendsSection
-
-                    // Process list
-                    if let snapshot = metricsManager.currentSnapshot {
-                        ProcessListView(processes: snapshot.processes)
-                            .frame(minHeight: 200)
+                        aiBackendsSection
                     }
+                    .padding(16)
                 }
-                .padding(16)
+
+            case .processes:
+                if let snapshot = metricsManager.currentSnapshot {
+                    ProcessListView(processes: snapshot.processes)
+                } else {
+                    Spacer()
+                    Text("Waiting for data...")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
 
             Divider()
@@ -64,18 +75,31 @@ struct DashboardView: View {
             Text("MacResourceMonitor")
                 .font(.system(size: 14, weight: .semibold))
 
-            Spacer()
+            Spacer().frame(width: 16)
 
-            // Display mode toggle
-            Picker("", selection: $metricsManager.displayMode) {
-                ForEach(DisplayMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
+            // Tab picker
+            Picker("", selection: $selectedTab) {
+                ForEach(DashboardTab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 160)
+            .frame(width: 180)
 
-            Spacer().frame(width: 12)
+            Spacer()
+
+            // Display mode toggle (only on dashboard tab)
+            if selectedTab == .dashboard {
+                Picker("", selection: $metricsManager.displayMode) {
+                    ForEach(DisplayMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+
+                Spacer().frame(width: 12)
+            }
 
             // Running indicator
             HStack(spacing: 6) {

@@ -5,17 +5,56 @@ enum ProcessGrouping: String, CaseIterable {
     case user = "User"
 }
 
+enum ProcessSortField: String {
+    case name, user, cpu, memory
+}
+
+enum SortDirection {
+    case ascending, descending
+
+    mutating func toggle() {
+        self = self == .ascending ? .descending : .ascending
+    }
+}
+
 struct ProcessListView: View {
     let processes: [ProcessMetrics]
     @State private var grouping: ProcessGrouping = .application
     @State private var expandedGroups: Set<String> = []
+    @State private var sortField: ProcessSortField = .cpu
+    @State private var sortDirection: SortDirection = .descending
+
+    private var totalProcessCount: Int {
+        processes.reduce(0) { sum, p in
+            sum + (p.isGroup ? p.children.count : 1)
+        }
+    }
 
     private var displayedProcesses: [ProcessMetrics] {
+        let grouped: [ProcessMetrics]
         switch grouping {
         case .application:
-            return processes.sorted { $0.cpuUsage > $1.cpuUsage }
+            grouped = processes
         case .user:
-            return groupByUser(processes)
+            grouped = groupByUser(processes)
+        }
+        return sortProcesses(grouped)
+    }
+
+    private func sortProcesses(_ procs: [ProcessMetrics]) -> [ProcessMetrics] {
+        procs.sorted { a, b in
+            let result: Bool
+            switch sortField {
+            case .name:
+                result = a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            case .user:
+                result = a.user.localizedCaseInsensitiveCompare(b.user) == .orderedAscending
+            case .cpu:
+                result = a.cpuUsage < b.cpuUsage
+            case .memory:
+                result = a.memoryBytes < b.memoryBytes
+            }
+            return sortDirection == .ascending ? result : !result
         }
     }
 
@@ -51,7 +90,21 @@ struct ProcessListView: View {
                 children: sortedChildren
             ))
         }
-        return results.sorted { $0.cpuUsage > $1.cpuUsage }
+        return results
+    }
+
+    private func toggleSort(_ field: ProcessSortField) {
+        if sortField == field {
+            sortDirection.toggle()
+        } else {
+            sortField = field
+            sortDirection = field == .name || field == .user ? .ascending : .descending
+        }
+    }
+
+    private func sortIndicator(for field: ProcessSortField) -> String {
+        guard sortField == field else { return "" }
+        return sortDirection == .ascending ? " \u{25B2}" : " \u{25BC}"
     }
 
     var body: some View {
@@ -65,7 +118,7 @@ struct ProcessListView: View {
 
                 Spacer()
 
-                Text("\(displayedProcesses.count) \(grouping == .user ? "users" : "apps")")
+                Text("\(totalProcessCount) processes, \(displayedProcesses.count) \(grouping == .user ? "users" : "groups")")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
 
@@ -86,7 +139,7 @@ struct ProcessListView: View {
 
             Divider()
 
-            // Column headers
+            // Sortable column headers
             columnHeaders
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
@@ -138,27 +191,32 @@ struct ProcessListView: View {
     }
 
     private var columnHeaders: some View {
-        processRowLayout(
-            name: Text(grouping == .user ? "User / Process" : "Application"),
-            user: grouping == .application ? Text("User") : nil,
-            cpu: Text("CPU"),
-            memory: Text("Memory")
-        )
+        HStack(spacing: 0) {
+            sortableHeader(grouping == .user ? "User / Process" : "Application", field: .name)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if grouping == .application {
+                sortableHeader("User", field: .user)
+                    .frame(width: 140, alignment: .trailing)
+                    .padding(.trailing, 12)
+            }
+            sortableHeader("CPU", field: .cpu)
+                .frame(width: 60, alignment: .trailing)
+                .padding(.trailing, 12)
+            sortableHeader("Memory", field: .memory)
+                .frame(width: 70, alignment: .trailing)
+        }
         .font(.system(size: 10, weight: .medium))
         .foregroundStyle(.tertiary)
     }
 
-    private func processRowLayout(name: Text, user: Text?, cpu: Text, memory: Text) -> some View {
-        HStack(spacing: 0) {
-            name.frame(maxWidth: .infinity, alignment: .leading)
-            if let user = user {
-                user.frame(width: 140, alignment: .trailing)
-                    .padding(.trailing, 12)
+    private func sortableHeader(_ label: String, field: ProcessSortField) -> some View {
+        Button(action: { toggleSort(field) }) {
+            HStack(spacing: 2) {
+                Text(label + sortIndicator(for: field))
             }
-            cpu.frame(width: 60, alignment: .trailing)
-                .padding(.trailing, 12)
-            memory.frame(width: 70, alignment: .trailing)
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(sortField == field ? .secondary : .tertiary)
     }
 }
 
@@ -176,7 +234,7 @@ private struct ProcessRowView: View {
     }
 }
 
-private struct ProcessRowContent: View {
+struct ProcessRowContent: View {
     let process: ProcessMetrics
     let isChild: Bool
     let showUser: Bool
@@ -234,6 +292,7 @@ private struct ProcessRowContent: View {
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {
+        if bytes == 0 { return "—" }
         let mb = Double(bytes) / (1024 * 1024)
         if mb >= 1024 {
             return String(format: "%5.1f GB", mb / 1024)

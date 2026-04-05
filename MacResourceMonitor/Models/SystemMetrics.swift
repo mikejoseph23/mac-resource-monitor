@@ -79,7 +79,7 @@ struct ThermalMetrics: Identifiable {
 }
 
 struct ProcessMetrics: Identifiable {
-    let id = UUID()
+    var id: String { "\(pid)-\(name)" }
     let pid: Int32
     let name: String
     let user: String
