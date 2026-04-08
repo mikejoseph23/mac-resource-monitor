@@ -58,6 +58,12 @@ struct ProcessListView: View {
         }
     }
 
+    private static let systemUsers: Set<String> = ["root", "nobody", "daemon"]
+
+    private static func isSystemUser(_ user: String) -> Bool {
+        user.hasPrefix("_") || systemUsers.contains(user)
+    }
+
     private func groupByUser(_ procs: [ProcessMetrics]) -> [ProcessMetrics] {
         var flat: [ProcessMetrics] = []
         for p in procs {
@@ -68,13 +74,23 @@ struct ProcessListView: View {
             }
         }
 
-        var groups: [String: [ProcessMetrics]] = [:]
+        // Bucket processes: system service accounts get consolidated,
+        // regular users stay separate.
+        var userGroups: [String: [ProcessMetrics]] = [:]
+        var systemProcesses: [ProcessMetrics] = []
+
         for p in flat {
-            groups[p.user, default: []].append(p)
+            if Self.isSystemUser(p.user) {
+                systemProcesses.append(p)
+            } else {
+                userGroups[p.user, default: []].append(p)
+            }
         }
 
         var results: [ProcessMetrics] = []
-        for (user, members) in groups {
+
+        // Regular user groups
+        for (user, members) in userGroups {
             let totalCPU = members.reduce(0.0) { $0 + $1.cpuUsage }
             let totalMem = members.reduce(UInt64(0)) { $0 + $1.memoryBytes }
             let sortedChildren = members.sorted { $0.cpuUsage > $1.cpuUsage }
@@ -90,6 +106,25 @@ struct ProcessListView: View {
                 children: sortedChildren
             ))
         }
+
+        // Consolidated system services group
+        if !systemProcesses.isEmpty {
+            let totalCPU = systemProcesses.reduce(0.0) { $0 + $1.cpuUsage }
+            let totalMem = systemProcesses.reduce(UInt64(0)) { $0 + $1.memoryBytes }
+            let sortedChildren = systemProcesses.sorted { $0.cpuUsage > $1.cpuUsage }
+            let topPID = sortedChildren.first?.pid ?? 0
+            results.append(ProcessMetrics(
+                pid: topPID,
+                name: "System Services",
+                user: "system",
+                bundleIdentifier: nil,
+                cpuUsage: totalCPU,
+                memoryBytes: totalMem,
+                isGroup: true,
+                children: sortedChildren
+            ))
+        }
+
         return results
     }
 

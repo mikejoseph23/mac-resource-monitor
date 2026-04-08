@@ -47,6 +47,22 @@ struct GPUMetrics: Identifiable {
     let perCoreUsage: [Double]?
 }
 
+struct VolumeInfo: Identifiable {
+    var id: String { mountPoint }
+    let name: String
+    let mountPoint: String
+    let totalBytes: UInt64
+    let usedBytes: UInt64
+    let isBootVolume: Bool
+
+    var freeBytes: UInt64 { totalBytes - usedBytes }
+
+    var usagePercent: Double {
+        guard totalBytes > 0 else { return 0 }
+        return Double(usedBytes) / Double(totalBytes) * 100.0
+    }
+}
+
 struct DiskMetrics: Identifiable {
     let id = UUID()
     let timestamp: Date
@@ -58,6 +74,7 @@ struct DiskMetrics: Identifiable {
     let totalWriteBytes: UInt64
     let readOpsPerSec: Double
     let writeOpsPerSec: Double
+    let volumes: [VolumeInfo]
 }
 
 struct NetworkMetrics: Identifiable {
@@ -95,6 +112,42 @@ struct AppSelfMetrics {
     let memoryBytes: UInt64
 }
 
+// MARK: - LM Studio
+
+enum LMStudioConnectionStatus {
+    case offline
+    case connected
+}
+
+struct LMStudioModel: Identifiable {
+    var id: String { modelId }
+    let modelId: String
+    let type: String            // "llm", "vlm", "embeddings"
+    let publisher: String
+    let arch: String
+    let quantization: String
+    let state: String           // "loaded", "not-loaded"
+    let maxContextLength: Int
+    let loadedContextLength: Int?
+    let compatibilityType: String  // "gguf", "mlx"
+
+    var isLoaded: Bool { state == "loaded" }
+}
+
+struct LMStudioMetrics {
+    let status: LMStudioConnectionStatus
+    let models: [LMStudioModel]
+    /// Aggregate CPU/memory for all LM Studio processes (from OS process list)
+    var processCPU: Double = 0
+    var processMemoryBytes: UInt64 = 0
+
+    var loadedModels: [LMStudioModel] { models.filter(\.isLoaded) }
+    var availableCount: Int { models.count }
+    var loadedCount: Int { loadedModels.count }
+
+    static let offline = LMStudioMetrics(status: .offline, models: [])
+}
+
 struct SystemSnapshot: Identifiable {
     let id = UUID()
     let timestamp: Date
@@ -106,4 +159,5 @@ struct SystemSnapshot: Identifiable {
     let thermal: ThermalMetrics
     let selfMetrics: AppSelfMetrics
     let processes: [ProcessMetrics]
+    let lmStudio: LMStudioMetrics
 }

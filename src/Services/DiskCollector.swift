@@ -8,22 +8,22 @@ final class DiskCollector {
     private var previousWriteOps: UInt64 = 0
     private var previousTimestamp: Date?
 
+    /// Paths that represent system/internal volumes not useful to display.
+    private static let excludedPrefixes = [
+        "/System/Volumes/",
+        "/Library/Developer/CoreSimulator/",
+    ]
+
     func collect() -> DiskMetrics {
         let timestamp = Date()
 
-        // Get disk space via FileManager
-        let totalDiskSpace: UInt64
-        let usedDiskSpace: UInt64
-        do {
-            let attrs = try FileManager.default.attributesOfFileSystem(forPath: "/")
-            let total = (attrs[.systemSize] as? NSNumber)?.uint64Value ?? 0
-            let free = (attrs[.systemFreeSize] as? NSNumber)?.uint64Value ?? 0
-            totalDiskSpace = total
-            usedDiskSpace = total - free
-        } catch {
-            totalDiskSpace = 0
-            usedDiskSpace = 0
-        }
+        // Enumerate user-visible volumes
+        let volumes = collectVolumes()
+
+        // Boot volume space (for top-level gauge and backward compat)
+        let bootVolume = volumes.first(where: \.isBootVolume)
+        let totalDiskSpace = bootVolume?.totalBytes ?? 0
+        let usedDiskSpace = bootVolume?.usedBytes ?? 0
 
         // Get disk I/O stats from IOKit
         var currentRead: UInt64 = 0
@@ -100,7 +100,36 @@ final class DiskCollector {
             totalReadBytes: currentRead,
             totalWriteBytes: currentWrite,
             readOpsPerSec: readOpsPerSec,
-            writeOpsPerSec: writeOpsPerSec
+            writeOpsPerSec: writeOpsPerSec,
+            volumes: volumes
         )
+    }
+
+    private func collectVolumes() -> [VolumeInfo] {
+        let keys: [URLResourceKey] = [.volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
+        guard let urls = FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: keys,
+            options: [.skipHiddenVolumes]
+        ) else { return [] }
+
+        return urls.compactMap { url in
+            let path = url.path
+            // Filter out system/internal volumes
+            if Self.excludedPrefixes.contains(where: { path.hasPrefix($0) }) { return nil }
+
+            guard let values = try? url.resourceValues(forKeys: Set(keys)),
+                  let name = values.volumeName,
+                  let total = values.volumeTotalCapacity,
+                  let available = values.volumeAvailableCapacity,
+                  total > 0 else { return nil }
+
+            return VolumeInfo(
+                name: name,
+                mountPoint: path,
+                totalBytes: UInt64(total),
+                usedBytes: UInt64(total - available),
+                isBootVolume: path == "/"
+            )
+        }
     }
 }

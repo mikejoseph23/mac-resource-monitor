@@ -35,6 +35,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Ensure the app appears in the Dock and has a proper menu bar
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
+
+        // Set dock icon from bundled resource (SPM builds a bare executable, not a .app bundle)
+        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApplication.shared.applicationIconImage = icon
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

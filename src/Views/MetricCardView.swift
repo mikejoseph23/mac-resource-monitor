@@ -8,7 +8,8 @@ struct MetricCardView: View {
     let severity: MetricSeverity
     let sparklineData: [(Date, Double)]
     var sparklineFixedRange: (min: Double, max: Double)? = nil
-    var details: [(label: String, value: String)] = []
+    var sparklineValueFormatter: ((Double) -> String)? = nil
+    var details: [(label: String, value: String, color: Color?)] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -43,7 +44,7 @@ struct MetricCardView: View {
                 .lineLimit(1)
 
             // Sparkline
-            SparklineView(dataPoints: sparklineData, lineColor: severity.color, fixedRange: sparklineFixedRange)
+            SparklineView(dataPoints: sparklineData, lineColor: severity.color, fixedRange: sparklineFixedRange, valueFormatter: sparklineValueFormatter)
                 .frame(height: 36)
 
             // Detail breakdown rows
@@ -53,14 +54,7 @@ struct MetricCardView: View {
 
                 VStack(spacing: 3) {
                     ForEach(details, id: \.label) { detail in
-                        HStack {
-                            Text(detail.label)
-                                .foregroundStyle(.tertiary)
-                            Spacer()
-                            Text(detail.value)
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.system(size: 10, design: .monospaced))
+                        detailRow(detail)
                     }
                 }
             }
@@ -74,6 +68,20 @@ struct MetricCardView: View {
                         .strokeBorder(severity.color.opacity(0.15), lineWidth: 1)
                 )
         }
+    }
+
+    @ViewBuilder
+    private func detailRow(_ detail: (label: String, value: String, color: Color?)) -> some View {
+        let labelColor: Color = detail.color ?? Color.secondary.opacity(0.5)
+        let valueColor: Color = detail.color ?? Color.secondary
+        HStack {
+            Text(detail.label)
+                .foregroundColor(labelColor)
+            Spacer()
+            Text(detail.value)
+                .foregroundColor(valueColor)
+        }
+        .font(.system(size: 10, design: .monospaced))
     }
 }
 

@@ -7,8 +7,11 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "MacResourceMonitor",
-            path: "MacResourceMonitor",
+            path: "src",
             exclude: ["Info.plist", "MacResourceMonitor.entitlements"],
+            resources: [
+                .copy("Resources/AppIcon.icns"),
+            ],
             linkerSettings: [
                 .linkedFramework("IOKit"),
             ]
