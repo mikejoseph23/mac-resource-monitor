@@ -101,13 +101,21 @@ struct DashboardView: View {
 
             // Display mode toggle and time range (only on dashboard tab)
             if selectedTab == .dashboard {
-                Picker("", selection: $metricsManager.timeRange) {
-                    ForEach(TimeRange.allCases, id: \.self) { range in
-                        Text(range.rawValue).tag(range)
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("Sparkline:")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $metricsManager.timeRange) {
+                        ForEach(TimeRange.allCases, id: \.self) { range in
+                            Text(range.rawValue).tag(range)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .frame(width: 80)
                 }
-                .pickerStyle(.menu)
-                .frame(width: 60)
 
                 Spacer().frame(width: 8)
 
@@ -208,7 +216,9 @@ struct DashboardView: View {
                 : "\(coreCount) cores",
             severity: .from(percent: usage),
             sparklineData: metricsManager.history.cpuHistory(range: selectedRange),
+            accentColor: .blue,
             sparklineFixedRange: isActual ? nil : (min: 0, max: 100),
+            sparklineTimeRangeSeconds: selectedRange.seconds,
             sparklineValueFormatter: { String(format: "%.1f%%", $0) },
             details: [
                 ("System", String(format: "%.2f%%", cpu?.systemUsage ?? 0), Color.red),
@@ -239,7 +249,9 @@ struct DashboardView: View {
             sparklineData: isActual
                 ? metricsManager.history.memoryHistory(range: selectedRange).map { ($0.0, $0.1 / 100.0 * totalGB) }
                 : metricsManager.history.memoryHistory(range: selectedRange),
+            accentColor: .purple,
             sparklineFixedRange: isActual ? nil : (min: 0, max: 100),
+            sparklineTimeRangeSeconds: selectedRange.seconds,
             sparklineValueFormatter: isActual
                 ? { String(format: "%.1f GB", $0) }
                 : { String(format: "%.1f%%", $0) },
@@ -270,7 +282,9 @@ struct DashboardView: View {
                 : "\(coreCount) cores",
             severity: .from(percent: usage),
             sparklineData: metricsManager.history.gpuHistory(range: selectedRange),
+            accentColor: .orange,
             sparklineFixedRange: isActual ? nil : (min: 0, max: 100),
+            sparklineTimeRangeSeconds: selectedRange.seconds,
             sparklineValueFormatter: { String(format: "%.1f%%", $0) },
             details: [
                 ("Utilization", String(format: "%.1f%%", usage), nil),
@@ -303,6 +317,8 @@ struct DashboardView: View {
                 : String(format: "R: %@  W: %@", formatIORate(readRate), formatIORate(writeRate)),
             severity: isActual ? .normal : .from(percent: usagePercent, warningAt: 80, criticalAt: 95),
             sparklineData: metricsManager.history.diskReadHistory(range: selectedRange),
+            accentColor: .teal,
+            sparklineTimeRangeSeconds: selectedRange.seconds,
             sparklineValueFormatter: { v in
                 if v >= 1_000_000 { return String(format: "%.1f MB/s", v / (1024 * 1024)) }
                 return String(format: "%.0f KB/s", v / 1024)
@@ -334,6 +350,8 @@ struct DashboardView: View {
                 : String(format: "In: %@  Out: %@", formatNetworkRate(inBytes), formatNetworkRate(outBytes)),
             severity: .normal,
             sparklineData: metricsManager.history.networkInHistory(range: selectedRange),
+            accentColor: .indigo,
+            sparklineTimeRangeSeconds: selectedRange.seconds,
             sparklineValueFormatter: { v in
                 if v >= 1_000_000 { return String(format: "%.1f MB/s", v / (1024 * 1024)) }
                 return String(format: "%.0f KB/s", v / 1024)
@@ -363,6 +381,8 @@ struct DashboardView: View {
             subtitle: isThrottled ? "Throttled" : "Not throttled",
             severity: severity,
             sparklineData: metricsManager.history.gpuHistory(range: selectedRange),
+            accentColor: .red,
+            sparklineTimeRangeSeconds: selectedRange.seconds,
             sparklineValueFormatter: { String(format: "%.1f%%", $0) },
             details: [
                 ("State", label, nil),

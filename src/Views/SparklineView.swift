@@ -5,6 +5,7 @@ struct SparklineView: View {
     let lineColor: Color
     let maxPoints: Int
     let fixedRange: (min: Double, max: Double)?
+    let timeRangeSeconds: TimeInterval?
     var valueFormatter: ((Double) -> String)?
 
     @State private var hoverIndex: Int?
@@ -14,12 +15,14 @@ struct SparklineView: View {
         lineColor: Color = .blue,
         maxPoints: Int = 1800,
         fixedRange: (min: Double, max: Double)? = nil,
+        timeRangeSeconds: TimeInterval? = nil,
         valueFormatter: ((Double) -> String)? = nil
     ) {
         self.dataPoints = dataPoints
         self.lineColor = lineColor
         self.maxPoints = maxPoints
         self.fixedRange = fixedRange
+        self.timeRangeSeconds = timeRangeSeconds
         self.valueFormatter = valueFormatter
     }
 
@@ -33,16 +36,39 @@ struct SparklineView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let values = visibleValues
+            let data = visibleData
+            let values = data.map(\.1)
             if values.count >= 2 {
                 let minVal = fixedRange?.min ?? values.min() ?? 0
                 let maxVal = fixedRange?.max ?? values.max() ?? 1
                 let range = max(maxVal - minVal, 0.001)
-                let stepX = geometry.size.width / CGFloat(values.count - 1)
+
+                // Position points proportionally within the time window.
+                // Use the actual data span when it's shorter than the selected
+                // range so early data fills the width instead of bunching at the right.
+                let now = Date()
+                let dataSpan = now.timeIntervalSince(data.first!.0)
+                let useFixedWindow = timeRangeSeconds.map { dataSpan >= $0 } ?? false
+                let effectiveDuration = useFixedWindow ? timeRangeSeconds! : dataSpan
+                let effectiveStart = useFixedWindow ? now.addingTimeInterval(-timeRangeSeconds!) : data.first!.0
+                let xPositions: [CGFloat] = data.map { point in
+                    let elapsed = point.0.timeIntervalSince(effectiveStart)
+                    return geometry.size.width * CGFloat(elapsed / max(effectiveDuration, 1))
+                }
 
                 ZStack(alignment: .topLeading) {
+                    // Horizontal grid lines (4 lines at 25%, 50%, 75%, 100%)
+                    ForEach([0.25, 0.5, 0.75, 1.0], id: \.self) { fraction in
+                        let y = geometry.size.height - CGFloat(fraction) * geometry.size.height
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: y))
+                            path.addLine(to: CGPoint(x: geometry.size.width, y: y))
+                        }
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    }
+
                     // Fill gradient beneath the line
-                    SparklineFillShape(values: values, minVal: minVal, range: range)
+                    SparklineFillShape(values: values, xPositions: xPositions, minVal: minVal, range: range)
                         .fill(
                             LinearGradient(
                                 colors: [lineColor.opacity(0.25), lineColor.opacity(0.02)],
@@ -52,12 +78,12 @@ struct SparklineView: View {
                         )
 
                     // Line stroke
-                    SparklineShape(values: values, minVal: minVal, range: range)
+                    SparklineShape(values: values, xPositions: xPositions, minVal: minVal, range: range)
                         .stroke(lineColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
 
                     // Hover indicator
                     if let idx = hoverIndex, idx < values.count {
-                        let x = CGFloat(idx) * stepX
+                        let x = xPositions[idx]
                         let normalised = CGFloat((values[idx] - minVal) / range)
                         let y = geometry.size.height - normalised * geometry.size.height
 
@@ -81,8 +107,18 @@ struct SparklineView: View {
                 .onContinuousHover { phase in
                     switch phase {
                     case .active(let location):
-                        let idx = Int((location.x / stepX).rounded())
-                        hoverIndex = max(0, min(idx, values.count - 1))
+                        // Find the closest data point to the hover x position
+                        let hoverX = location.x
+                        var closestIdx = 0
+                        var closestDist = CGFloat.greatestFiniteMagnitude
+                        for (i, px) in xPositions.enumerated() {
+                            let dist = abs(px - hoverX)
+                            if dist < closestDist {
+                                closestDist = dist
+                                closestIdx = i
+                            }
+                        }
+                        hoverIndex = closestIdx
                     case .ended:
                         hoverIndex = nil
                     @unknown default:
@@ -153,17 +189,16 @@ struct SparklineView: View {
 
 private struct SparklineShape: Shape {
     let values: [Double]
+    let xPositions: [CGFloat]
     let minVal: Double
     let range: Double
 
     func path(in rect: CGRect) -> Path {
         guard values.count >= 2 else { return Path() }
 
-        let stepX = rect.width / CGFloat(values.count - 1)
-
         return Path { path in
             for (index, value) in values.enumerated() {
-                let x = CGFloat(index) * stepX
+                let x = xPositions[index]
                 let normalised = CGFloat((value - minVal) / range)
                 let y = rect.height - normalised * rect.height
                 let point = CGPoint(x: x, y: y)
@@ -179,27 +214,26 @@ private struct SparklineShape: Shape {
 
 private struct SparklineFillShape: Shape {
     let values: [Double]
+    let xPositions: [CGFloat]
     let minVal: Double
     let range: Double
 
     func path(in rect: CGRect) -> Path {
         guard values.count >= 2 else { return Path() }
 
-        let stepX = rect.width / CGFloat(values.count - 1)
-
         return Path { path in
-            // Start at bottom-left
-            path.move(to: CGPoint(x: 0, y: rect.height))
+            // Start at bottom beneath first data point
+            path.move(to: CGPoint(x: xPositions[0], y: rect.height))
 
             for (index, value) in values.enumerated() {
-                let x = CGFloat(index) * stepX
+                let x = xPositions[index]
                 let normalised = CGFloat((value - minVal) / range)
                 let y = rect.height - normalised * rect.height
                 path.addLine(to: CGPoint(x: x, y: y))
             }
 
             // Close along the bottom
-            path.addLine(to: CGPoint(x: CGFloat(values.count - 1) * stepX, y: rect.height))
+            path.addLine(to: CGPoint(x: xPositions[values.count - 1], y: rect.height))
             path.closeSubpath()
         }
     }

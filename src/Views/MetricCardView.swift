@@ -7,7 +7,9 @@ struct MetricCardView: View {
     let subtitle: String
     let severity: MetricSeverity
     let sparklineData: [(Date, Double)]
+    var accentColor: Color = .blue
     var sparklineFixedRange: (min: Double, max: Double)? = nil
+    var sparklineTimeRangeSeconds: TimeInterval? = nil
     var sparklineValueFormatter: ((Double) -> String)? = nil
     var details: [(label: String, value: String, color: Color?)] = []
 
@@ -17,7 +19,7 @@ struct MetricCardView: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(severity.color)
+                    .foregroundStyle(accentColor)
 
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
@@ -44,7 +46,7 @@ struct MetricCardView: View {
                 .lineLimit(1)
 
             // Sparkline
-            SparklineView(dataPoints: sparklineData, lineColor: severity.color, fixedRange: sparklineFixedRange, valueFormatter: sparklineValueFormatter)
+            SparklineView(dataPoints: sparklineData, lineColor: severity.color, fixedRange: sparklineFixedRange, timeRangeSeconds: sparklineTimeRangeSeconds, valueFormatter: sparklineValueFormatter)
                 .frame(height: 36)
 
             // Detail breakdown rows
