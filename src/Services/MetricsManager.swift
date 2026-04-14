@@ -92,16 +92,6 @@ class MetricsManager: ObservableObject {
         let processes = processCollector.collect()
         let lmStudio = await lmStudioResult
 
-        // Enrich LM Studio metrics with OS-level process resource usage
-        var lmStudioEnriched = lmStudio
-        if lmStudio.status == .connected {
-            let lmProcessGroup = processes.first(where: { $0.name == "LM Studio" })
-            if let group = lmProcessGroup {
-                lmStudioEnriched.processCPU = group.cpuUsage
-                lmStudioEnriched.processMemoryBytes = group.memoryBytes
-            }
-        }
-
         let snapshot = SystemSnapshot(
             timestamp: Date(),
             cpu: cpu,
@@ -112,7 +102,7 @@ class MetricsManager: ObservableObject {
             thermal: thermal,
             selfMetrics: selfMetrics,
             processes: processes,
-            lmStudio: lmStudioEnriched
+            lmStudio: lmStudio
         )
         currentSnapshot = snapshot
         history.append(snapshot)

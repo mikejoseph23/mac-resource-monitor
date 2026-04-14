@@ -452,12 +452,6 @@ struct DashboardView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
 
-                    // Resource usage meters
-                    if lm.processMemoryBytes > 0 || lm.processCPU > 0 {
-                        Divider().opacity(0.3)
-                        lmStudioResourceRow(lm)
-                    }
-
                     // Loaded models
                     if !lm.loadedModels.isEmpty {
                         Divider().opacity(0.3)
@@ -505,68 +499,6 @@ struct DashboardView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private func lmStudioResourceRow(_ lm: LMStudioMetrics) -> some View {
-        let totalMem = metricsManager.currentSnapshot?.memory.totalBytes ?? 1
-        let memPercent = Double(lm.processMemoryBytes) / Double(totalMem) * 100.0
-        let memSeverity = MetricSeverity.from(percent: memPercent, warningAt: 40, criticalAt: 70)
-
-        return HStack(spacing: 16) {
-            // CPU
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: "cpu")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Text("CPU")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(String(format: "%.1f%%", lm.processCPU))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.primary.opacity(0.06))
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.cyan.opacity(0.7))
-                            .frame(width: geo.size.width * min(CGFloat(lm.processCPU / 100.0), 1.0))
-                    }
-                }
-                .frame(height: 4)
-            }
-
-            // Memory
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: "memorychip")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Text("Memory")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(formatGBorMB(lm.processMemoryBytes))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(memSeverity.color)
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.primary.opacity(0.06))
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(memSeverity.color.opacity(0.7))
-                            .frame(width: geo.size.width * min(CGFloat(memPercent / 100.0), 1.0))
-                    }
-                }
-                .frame(height: 4)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 
     private func lmStudioModelRow(_ model: LMStudioModel) -> some View {

@@ -137,9 +137,6 @@ struct LMStudioModel: Identifiable {
 struct LMStudioMetrics {
     let status: LMStudioConnectionStatus
     let models: [LMStudioModel]
-    /// Aggregate CPU/memory for all LM Studio processes (from OS process list)
-    var processCPU: Double = 0
-    var processMemoryBytes: UInt64 = 0
 
     var loadedModels: [LMStudioModel] { models.filter(\.isLoaded) }
     var availableCount: Int { models.count }

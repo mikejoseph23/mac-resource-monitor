@@ -43,17 +43,17 @@ struct SparklineView: View {
                 let maxVal = fixedRange?.max ?? values.max() ?? 1
                 let range = max(maxVal - minVal, 0.001)
 
-                // Position points proportionally within the time window.
-                // Use the actual data span when it's shorter than the selected
-                // range so early data fills the width instead of bunching at the right.
+                // Position points proportionally within the time window, anchored
+                // to the right edge. Newest sample sits at the right; older samples
+                // scroll left. Before enough history accumulates, the left side
+                // stays empty (Activity Monitor / Task Manager behavior).
                 let now = Date()
                 let dataSpan = now.timeIntervalSince(data.first!.0)
-                let useFixedWindow = timeRangeSeconds.map { dataSpan >= $0 } ?? false
-                let effectiveDuration = useFixedWindow ? timeRangeSeconds! : dataSpan
-                let effectiveStart = useFixedWindow ? now.addingTimeInterval(-timeRangeSeconds!) : data.first!.0
+                let effectiveDuration = timeRangeSeconds ?? max(dataSpan, 1)
+                let effectiveStart = now.addingTimeInterval(-effectiveDuration)
                 let xPositions: [CGFloat] = data.map { point in
                     let elapsed = point.0.timeIntervalSince(effectiveStart)
-                    return geometry.size.width * CGFloat(elapsed / max(effectiveDuration, 1))
+                    return geometry.size.width * CGFloat(elapsed / effectiveDuration)
                 }
 
                 ZStack(alignment: .topLeading) {
