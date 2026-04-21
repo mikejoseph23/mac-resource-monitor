@@ -6,6 +6,14 @@ A native macOS dashboard that consolidates system resource monitoring into a sin
 
 ![Mac Resource Monitor dashboard](screenshot.png)
 
+## Why
+
+Activity Monitor scatters the picture across five tabs — CPU here, Memory there, Disk and Network somewhere else. Seeing *everything at once* means constant tab-switching, and sparklines reset the moment you look away.
+
+Mac Resource Monitor consolidates it all into one always-on dashboard: CPU, memory, GPU, disk, network, thermals, and top processes on a single screen with rolling history so you can actually see trends.
+
+It was also built with **LM Studio** (and local LLM workloads generally) in mind. When you're running a 70B model on Apple Silicon, you want to see GPU utilization, unified memory pressure, and thermal state side-by-side in real time — not tab through panes hoping to catch the spike.
+
 ## Features
 
 - **CPU** — Per-core utilization with efficiency/performance core breakdown
