@@ -4,6 +4,8 @@ A native macOS dashboard that consolidates system resource monitoring into a sin
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue) ![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
+![Mac Resource Monitor dashboard](screenshot.png)
+
 ## Features
 
 - **CPU** — Per-core utilization with efficiency/performance core breakdown
