@@ -6,6 +6,16 @@ A native macOS dashboard that consolidates system resource monitoring into a sin
 
 ![Mac Resource Monitor dashboard](screenshot.png)
 
+## Download
+
+Just want to run it? Grab the latest release — no build tools required.
+
+- **[⬇ Download MacResourceMonitor-v1.0.0.dmg](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.0.0/MacResourceMonitor-v1.0.0.dmg)** (recommended)
+- [Download MacResourceMonitor-v1.0.0.zip](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.0.0/MacResourceMonitor-v1.0.0.zip)
+- [All releases](https://github.com/mikejoseph23/mac-resource-monitor/releases)
+
+Open the DMG (or unzip) and drag **Mac Resource Monitor.app** into `/Applications`. On first launch, right-click the app and choose **Open** to bypass Gatekeeper (the app is unsigned).
+
 ## Why
 
 Activity Monitor scatters the picture across five tabs — CPU here, Memory there, Disk and Network somewhere else. Seeing *everything at once* means constant tab-switching, and sparklines reset the moment you look away.
