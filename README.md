@@ -29,6 +29,10 @@ It was also built with **LM Studio** (and local LLM workloads generally) in mind
 - **CPU** — Per-core utilization with efficiency/performance core breakdown
 - **Memory** — Active, wired, compressed, cached, and swap usage
 - **GPU** — Apple Silicon GPU utilization via IOKit
+- **Power** *(Apple Silicon)* — Live CPU / GPU / ANE wattage, sampled via the
+  same private `IOReport` framework `powermetrics` uses. No `sudo` required.
+- **Frequency** *(Apple Silicon)* — Per-cluster average MHz for E-cores,
+  P-cores, and the GPU, computed from DVFS state residencies.
 - **Disk I/O** — Read/write rates and volume capacity
 - **Network** — Per-interface throughput (64-bit counters)
 - **Processes** — Sortable process list with grouped helper processes and delta CPU tracking
@@ -36,7 +40,14 @@ It was also built with **LM Studio** (and local LLM workloads generally) in mind
 - **LM Studio** — Optional integration for local LLM monitoring
 - **Menu Bar Extra** — Compact popover with key metrics, stays running when the window is closed
 
-No external dependencies. All metrics collected via macOS system APIs (Mach, sysctl, IOKit).
+No external dependencies. All metrics collected via macOS system APIs (Mach, sysctl, IOKit, IOReport).
+
+### Apple Silicon vs Intel
+
+The dashboard runs on Intel Macs but the **Power**, **Frequency**, and full
+**GPU** sections are Apple Silicon only — they read SoC-specific channels
+that don't exist on Intel hardware. CPU, memory, disk, network, and thermal
+metrics work everywhere.
 
 ## Requirements
 
@@ -71,6 +82,27 @@ src/
 
 - **GPU core count** is hardcoded to 80 in `GPUCollector.swift` for the M3 Ultra. Adjust this for your hardware.
 - **No sandboxing** — the app requires unrestricted access to system APIs for full metric collection.
+
+## Credits
+
+The Power and Frequency sections are powered by Apple's private
+`IOReport.framework`. The technique — and a lot of the channel-matching
+logic in [`IOReportBridge.swift`](src/Services/IOReportBridge.swift),
+[`SoCInfo.swift`](src/Services/SoCInfo.swift), and
+[`PowerCollector.swift`](src/Services/PowerCollector.swift) — is adapted
+from **[vladkens/macmon](https://github.com/vladkens/macmon)**, an
+excellent Rust TUI for the same data. macmon is MIT-licensed; huge thanks
+to [@vladkens](https://github.com/vladkens) for figuring out the
+sudoless approach and documenting it well enough to port.
+
+See also the prior art macmon credits:
+
+- [tlkh/asitop](https://github.com/tlkh/asitop) — the original Python
+  TUI; requires sudo.
+- [BitesPotatoBacks/SocPowerBuddy](https://github.com/dehydratedpotato/socpowerbud)
+  — Objective-C, no TUI.
+- [op06072/NeoAsitop](https://github.com/op06072/NeoAsitop) — Swift port
+  of asitop.
 
 ## License
 

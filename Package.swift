@@ -14,6 +14,7 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedFramework("IOKit"),
+                .linkedLibrary("IOReport"),  // private dyld-cache lib for power/freq sampling (Apple Silicon)
             ]
         ),
     ]

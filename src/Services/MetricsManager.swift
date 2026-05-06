@@ -45,6 +45,7 @@ class MetricsManager: ObservableObject {
     private let diskCollector = DiskCollector()
     private let networkCollector = NetworkCollector()
     private let thermalCollector = ThermalCollector()
+    private let powerCollector = PowerCollector()
     private let selfCollector = SelfMetricsCollector()
     private let processCollector = ProcessCollector()
     private let lmStudioCollector = LMStudioCollector()
@@ -88,6 +89,7 @@ class MetricsManager: ObservableObject {
         let disk = diskCollector.collect()
         let network = networkCollector.collect()
         let thermal = thermalCollector.collect()
+        let power = powerCollector.collect()
         let selfMetrics = selfCollector.collect()
         let processes = processCollector.collect()
         let lmStudio = await lmStudioResult
@@ -100,6 +102,7 @@ class MetricsManager: ObservableObject {
             disk: disk,
             network: network,
             thermal: thermal,
+            power: power,
             selfMetrics: selfMetrics,
             processes: processes,
             lmStudio: lmStudio

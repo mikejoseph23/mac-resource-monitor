@@ -45,6 +45,8 @@ struct GPUMetrics: Identifiable {
     let utilizationPercent: Double
     let coreCount: Int
     let perCoreUsage: [Double]?
+    let chipName: String
+    let neuralEngineCoreCount: Int
 }
 
 struct VolumeInfo: Identifiable {
@@ -93,6 +95,18 @@ struct ThermalMetrics: Identifiable {
     let timestamp: Date
     let thermalState: ProcessInfo.ThermalState
     let isThrottled: Bool
+}
+
+struct PowerMetrics: Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let cpuPowerWatts: Double
+    let gpuPowerWatts: Double
+    let anePowerWatts: Double
+    let totalPowerWatts: Double      // cpu + gpu + ane
+    let ecpuFreqMHz: Int             // 0 when no E-CPU activity
+    let pcpuFreqMHz: Int
+    let gpuFreqMHz: Int
 }
 
 struct ProcessMetrics: Identifiable {
@@ -154,6 +168,7 @@ struct SystemSnapshot: Identifiable {
     let disk: DiskMetrics
     let network: NetworkMetrics
     let thermal: ThermalMetrics
+    let power: PowerMetrics?         // nil on Intel or when IOReport is unavailable
     let selfMetrics: AppSelfMetrics
     let processes: [ProcessMetrics]
     let lmStudio: LMStudioMetrics

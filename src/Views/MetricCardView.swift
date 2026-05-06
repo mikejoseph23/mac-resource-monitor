@@ -14,59 +14,63 @@ struct MetricCardView: View {
     var details: [(label: String, value: String, color: Color?)] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             // Header row: icon + title + severity dot
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(accentColor)
 
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
                 Circle()
                     .fill(severity.color)
-                    .frame(width: 7, height: 7)
+                    .frame(width: 6, height: 6)
             }
 
-            // Large value
-            Text(value)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+            // Value + subtitle on one row
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(value)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
 
-            // Subtitle
-            Text(subtitle)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
 
             // Sparkline
             SparklineView(dataPoints: sparklineData, lineColor: severity.color, fixedRange: sparklineFixedRange, timeRangeSeconds: sparklineTimeRangeSeconds, valueFormatter: sparklineValueFormatter)
-                .frame(height: 36)
+                .frame(height: 28)
+                .padding(.top, 2)
 
             // Detail breakdown rows
             if !details.isEmpty {
                 Divider()
                     .opacity(0.3)
+                    .padding(.top, 2)
 
-                VStack(spacing: 3) {
+                VStack(spacing: 2) {
                     ForEach(details, id: \.label) { detail in
                         detailRow(detail)
                     }
                 }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(severity.color.opacity(0.15), lineWidth: 1)
                 )
         }

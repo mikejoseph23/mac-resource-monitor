@@ -7,12 +7,14 @@ enum DashboardTab: String, CaseIterable {
 
 struct DashboardView: View {
     @EnvironmentObject private var metricsManager: MetricsManager
+    @EnvironmentObject private var layout: DashboardLayout
     @State private var selectedTab: DashboardTab = .dashboard
+    @State private var showingLayoutPopover = false
 
     private let columns = [
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14)
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
     ]
 
     var body: some View {
@@ -26,26 +28,23 @@ struct DashboardView: View {
             switch selectedTab {
             case .dashboard:
                 ScrollView {
-                    VStack(spacing: 16) {
-                        // At-a-glance gauges
-                        gaugeRow
-
-                        LazyVGrid(columns: columns, spacing: 14) {
-                            cpuCard
-                            memoryCard
-                            gpuCard
-                            diskCard
-                            networkCard
-                            thermalCard
+                    VStack(spacing: 10) {
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            if layout.isVisible(.cpu)       { cpuCard }
+                            if layout.isVisible(.memory)    { memoryCard }
+                            if layout.isVisible(.gpu)       { gpuCard }
+                            if layout.isVisible(.disk)      { diskCard }
+                            if layout.isVisible(.network)   { networkCard }
+                            if layout.isVisible(.thermal)   { thermalCard }
+                            if metricsManager.currentSnapshot?.power != nil {
+                                if layout.isVisible(.power)     { powerCard }
+                                if layout.isVisible(.frequency) { frequencyCard }
+                            }
                         }
 
-                        if let volumes = metricsManager.currentSnapshot?.disk.volumes, !volumes.isEmpty {
-                            VolumesPanelView(volumes: volumes)
-                        }
-
-                        aiBackendsSection
+                        bottomPanelsRow
                     }
-                    .padding(16)
+                    .padding(12)
                 }
 
             case .processes:
@@ -128,6 +127,20 @@ struct DashboardView: View {
                 .frame(width: 160)
 
                 Spacer().frame(width: 12)
+
+                Button {
+                    showingLayoutPopover.toggle()
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.borderless)
+                .help("Show or hide widgets")
+                .popover(isPresented: $showingLayoutPopover, arrowEdge: .bottom) {
+                    layoutPopover
+                }
+
+                Spacer().frame(width: 8)
             }
 
             // Running indicator
@@ -144,57 +157,59 @@ struct DashboardView: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: - Gauges
+    // MARK: - Layout popover
 
-    private var gaugeRow: some View {
-        HStack(spacing: 14) {
-            cpuGauge
-            memoryGauge
-            diskSpaceGauge
+    private var layoutPopover: some View {
+        let supportsAS = Architecture.isAppleSilicon
+        let widgets = DashboardWidget.allCases.filter { !$0.requiresAppleSilicon || supportsAS }
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Widgets")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(widgets) { widget in
+                    Toggle(widget.displayName, isOn: Binding(
+                        get: { layout.isVisible(widget) },
+                        set: { layout.setVisible(widget, $0) }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
+        .frame(width: 220)
     }
 
-    private var cpuGauge: some View {
-        let snapshot = metricsManager.currentSnapshot
-        let usage = snapshot?.cpu.totalUsage ?? 0
-        let coreCount = snapshot?.cpu.coreCount ?? 0
-        return GaugeMeterView(
-            title: "CPU",
-            icon: "cpu",
-            percent: usage,
-            subtitle: "\(coreCount) cores",
-            severity: .from(percent: usage)
-        )
-    }
+    // MARK: - Bottom panels (Storage + AI backends, side by side)
 
-    private var memoryGauge: some View {
-        let snapshot = metricsManager.currentSnapshot
-        let mem = snapshot?.memory
-        let usage = mem?.usagePercent ?? 0
-        let totalGB = Double(mem?.totalBytes ?? 0) / (1024 * 1024 * 1024)
-        let usedGB = Double(mem?.usedBytes ?? 0) / (1024 * 1024 * 1024)
-        return GaugeMeterView(
-            title: "Memory",
-            icon: "memorychip",
-            percent: usage,
-            subtitle: String(format: "%.1f / %.0f GB", usedGB, totalGB),
-            severity: .from(percent: usage)
-        )
-    }
+    @ViewBuilder
+    private var bottomPanelsRow: some View {
+        let volumes = metricsManager.currentSnapshot?.disk.volumes ?? []
+        let showVolumes  = layout.isVisible(.volumes) && !volumes.isEmpty
+        let showLMStudio = layout.isVisible(.lmStudio)
 
-    private var diskSpaceGauge: some View {
-        let snapshot = metricsManager.currentSnapshot
-        let disk = snapshot?.disk
-        let totalBytes = Double(disk?.totalDiskSpace ?? 0)
-        let usedBytes = Double(disk?.usedDiskSpace ?? 0)
-        let usagePercent = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0
-        return GaugeMeterView(
-            title: "Disk",
-            icon: "internaldrive",
-            percent: usagePercent,
-            subtitle: formatDiskSpace(used: usedBytes, total: totalBytes),
-            severity: .from(percent: usagePercent, warningAt: 80, criticalAt: 95)
-        )
+        if showVolumes && showLMStudio {
+            HStack(alignment: .top, spacing: 10) {
+                VolumesPanelView(volumes: volumes)
+                    .frame(maxWidth: .infinity)
+                aiBackendsSection
+                    .frame(width: 340)
+            }
+        } else if showVolumes {
+            VolumesPanelView(volumes: volumes)
+        } else if showLMStudio {
+            aiBackendsSection
+        }
     }
 
     // MARK: - Cards
@@ -289,9 +304,9 @@ struct DashboardView: View {
             details: [
                 ("Utilization", String(format: "%.1f%%", usage), nil),
                 ("Active Cores", String(format: "%.0f / %d", activeCores, coreCount), nil),
-                ("Chip", "M3 Ultra", nil),
+                ("Chip", snapshot?.gpu.chipName ?? "Apple Silicon", nil),
                 ("Total Cores", "\(coreCount)", nil),
-                ("Neural Engine", "32 cores", nil),
+                ("Neural Engine", "\(snapshot?.gpu.neuralEngineCoreCount ?? 16) cores", nil),
             ]
         )
     }
@@ -363,6 +378,56 @@ struct DashboardView: View {
                 ("Packets Out/sec", String(format: "%.0f", net?.packetsOutPerSec ?? 0), nil),
                 ("Data Received", formatGBorMB(net?.totalBytesIn ?? 0), nil),
                 ("Data Sent", formatGBorMB(net?.totalBytesOut ?? 0), nil),
+            ]
+        )
+    }
+
+    private var powerCard: some View {
+        let snapshot = metricsManager.currentSnapshot
+        let power = snapshot?.power
+        let total = power?.totalPowerWatts ?? 0
+        let cpuW = power?.cpuPowerWatts ?? 0
+        let gpuW = power?.gpuPowerWatts ?? 0
+        let aneW = power?.anePowerWatts ?? 0
+        return MetricCardView(
+            title: "Power",
+            icon: "bolt.fill",
+            value: String(format: "%.2f W", total),
+            subtitle: String(format: "CPU %.1f  GPU %.1f  ANE %.1f", cpuW, gpuW, aneW),
+            severity: .from(percent: min(total / 80.0 * 100.0, 100.0), warningAt: 60, criticalAt: 85),
+            sparklineData: metricsManager.history.totalPowerHistory(range: selectedRange),
+            accentColor: .yellow,
+            sparklineTimeRangeSeconds: selectedRange.seconds,
+            sparklineValueFormatter: { String(format: "%.2f W", $0) },
+            details: [
+                ("CPU",   String(format: "%.2f W", cpuW), Color.blue),
+                ("GPU",   String(format: "%.2f W", gpuW), Color.orange),
+                ("ANE",   String(format: "%.2f W", aneW), Color.purple),
+                ("Total", String(format: "%.2f W", total), nil),
+            ]
+        )
+    }
+
+    private var frequencyCard: some View {
+        let snapshot = metricsManager.currentSnapshot
+        let power = snapshot?.power
+        let ecpu = power?.ecpuFreqMHz ?? 0
+        let pcpu = power?.pcpuFreqMHz ?? 0
+        let gpu = power?.gpuFreqMHz ?? 0
+        return MetricCardView(
+            title: "Frequency",
+            icon: "waveform.path",
+            value: pcpu > 0 ? String(format: "%.2f GHz", Double(pcpu) / 1000.0) : "—",
+            subtitle: "P-CPU avg",
+            severity: .normal,
+            sparklineData: metricsManager.history.totalPowerHistory(range: selectedRange),
+            accentColor: .mint,
+            sparklineTimeRangeSeconds: selectedRange.seconds,
+            sparklineValueFormatter: { String(format: "%.2f W", $0) },
+            details: [
+                ("E-CPU", ecpu > 0 ? "\(ecpu) MHz" : "idle", Color.cyan),
+                ("P-CPU", pcpu > 0 ? "\(pcpu) MHz" : "idle", Color.blue),
+                ("GPU",   gpu  > 0 ? "\(gpu) MHz"  : "idle", Color.orange),
             ]
         )
     }

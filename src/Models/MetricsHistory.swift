@@ -49,4 +49,22 @@ class MetricsHistory: ObservableObject {
     func networkOutHistory(range: TimeRange) -> [(Date, Double)] {
         snapshots(in: range).map { ($0.timestamp, $0.network.bytesOutPerSec) }
     }
+
+    func cpuPowerHistory(range: TimeRange) -> [(Date, Double)] {
+        snapshots(in: range).compactMap { snap in
+            snap.power.map { ($0.timestamp, $0.cpuPowerWatts) }
+        }
+    }
+
+    func gpuPowerHistory(range: TimeRange) -> [(Date, Double)] {
+        snapshots(in: range).compactMap { snap in
+            snap.power.map { ($0.timestamp, $0.gpuPowerWatts) }
+        }
+    }
+
+    func totalPowerHistory(range: TimeRange) -> [(Date, Double)] {
+        snapshots(in: range).compactMap { snap in
+            snap.power.map { ($0.timestamp, $0.totalPowerWatts) }
+        }
+    }
 }

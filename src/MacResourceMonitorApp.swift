@@ -4,11 +4,13 @@ import SwiftUI
 struct MacResourceMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var metricsManager = MetricsManager()
+    @StateObject private var layout = DashboardLayout()
 
     var body: some Scene {
         WindowGroup {
             DashboardView()
                 .environmentObject(metricsManager)
+                .environmentObject(layout)
         }
         .defaultSize(width: 900, height: 700)
         .commands {
@@ -25,6 +27,7 @@ struct MacResourceMonitorApp: App {
         MenuBarExtra("Resource Monitor", systemImage: "gauge.with.dots.needle.33percent") {
             MenuBarView()
                 .environmentObject(metricsManager)
+                .environmentObject(layout)
         }
         .menuBarExtraStyle(.window)
     }
@@ -36,8 +39,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
 
-        // Set dock icon from bundled resource (SPM builds a bare executable, not a .app bundle)
-        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+        // Set dock icon from the .app bundle's Resources (Info.plist CFBundleIconFile also handles this).
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApplication.shared.applicationIconImage = icon
         }

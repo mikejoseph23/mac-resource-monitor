@@ -3,6 +3,9 @@ import IOKit
 
 final class GPUCollector {
 
+    private lazy var chipName: String = Self.detectChipName()
+    private lazy var neuralEngineCores: Int = Self.neuralEngineCoreCount(for: chipName)
+
     func collect() -> GPUMetrics {
         let timestamp = Date()
 
@@ -49,16 +52,52 @@ final class GPUCollector {
             IOObjectRelease(iterator)
         }
 
-        // Default core count for M3 Ultra if not reported
         if gpuCoreCount == 0 {
-            gpuCoreCount = 80
+            gpuCoreCount = Self.defaultGPUCoreCount(for: chipName)
         }
 
         return GPUMetrics(
             timestamp: timestamp,
             utilizationPercent: utilization,
             coreCount: gpuCoreCount,
-            perCoreUsage: nil
+            perCoreUsage: nil,
+            chipName: chipName,
+            neuralEngineCoreCount: neuralEngineCores
         )
+    }
+
+    private static func detectChipName() -> String {
+        var size = 0
+        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
+        guard size > 0 else { return "Apple Silicon" }
+        var buffer = [CChar](repeating: 0, count: size)
+        sysctlbyname("machdep.cpu.brand_string", &buffer, &size, nil, 0)
+        let raw = String(cString: buffer).trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? "Apple Silicon" : raw
+    }
+
+    private static func neuralEngineCoreCount(for chip: String) -> Int {
+        // All current Apple Silicon has a 16-core Neural Engine; Ultra variants
+        // fuse two dies and double it to 32. Older A-series could be lower, but
+        // we target macOS 14+ / Apple Silicon Macs, so 16/32 covers the field.
+        return chip.localizedCaseInsensitiveContains("Ultra") ? 32 : 16
+    }
+
+    private static func defaultGPUCoreCount(for chip: String) -> Int {
+        // Rough fallbacks when IOKit doesn't report a core count. Not
+        // exhaustive — users can see 0 here if detection fails entirely.
+        let lower = chip.lowercased()
+        if lower.contains("m3 ultra") { return 80 }
+        if lower.contains("m2 ultra") { return 76 }
+        if lower.contains("m1 ultra") { return 64 }
+        if lower.contains("m4 max")   { return 40 }
+        if lower.contains("m3 max")   { return 40 }
+        if lower.contains("m2 max")   { return 38 }
+        if lower.contains("m1 max")   { return 32 }
+        if lower.contains("m4 pro")   { return 20 }
+        if lower.contains("m3 pro")   { return 18 }
+        if lower.contains("m2 pro")   { return 19 }
+        if lower.contains("m1 pro")   { return 16 }
+        return 0
     }
 }
