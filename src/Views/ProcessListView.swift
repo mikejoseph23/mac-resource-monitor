@@ -19,13 +19,20 @@ enum SortDirection {
 
 struct ProcessListView: View {
     let processes: [ProcessMetrics]
+    var nameFilter: [String]? = nil
+    var filterLabel: String = ""
     @State private var grouping: ProcessGrouping = .application
     @State private var expandedGroups: Set<String> = []
     @State private var sortField: ProcessSortField = .cpu
     @State private var sortDirection: SortDirection = .descending
     @State private var showAll = false
+    @State private var bypassFilter = false
 
     private let defaultVisibleCount = 25
+
+    private var activeFilter: [String]? {
+        bypassFilter ? nil : nameFilter
+    }
 
     private var totalProcessCount: Int {
         processes.reduce(0) { sum, p in
@@ -33,13 +40,45 @@ struct ProcessListView: View {
         }
     }
 
+    private func nameMatches(_ name: String, needles: [String]) -> Bool {
+        let lower = name.lowercased()
+        return needles.contains { lower.contains($0) }
+    }
+
+    private var filteredProcesses: [ProcessMetrics] {
+        guard let filter = activeFilter else { return processes }
+        let needles = filter.map { $0.lowercased() }
+        return processes.compactMap { proc -> ProcessMetrics? in
+            let parentMatched = nameMatches(proc.name, needles: needles)
+            guard proc.isGroup else {
+                return parentMatched ? proc : nil
+            }
+            if parentMatched { return proc }
+            let matchingChildren = proc.children.filter { nameMatches($0.name, needles: needles) }
+            guard !matchingChildren.isEmpty else { return nil }
+            let cpu = matchingChildren.reduce(0.0) { $0 + $1.cpuUsage }
+            let mem = matchingChildren.reduce(UInt64(0)) { $0 + $1.memoryBytes }
+            return ProcessMetrics(
+                pid: proc.pid,
+                name: proc.name,
+                user: proc.user,
+                bundleIdentifier: proc.bundleIdentifier,
+                cpuUsage: cpu,
+                memoryBytes: mem,
+                isGroup: true,
+                children: matchingChildren
+            )
+        }
+    }
+
     private var displayedProcesses: [ProcessMetrics] {
+        let source = filteredProcesses
         let grouped: [ProcessMetrics]
         switch grouping {
         case .application:
-            grouped = processes
+            grouped = source
         case .user:
-            grouped = groupByUser(processes)
+            grouped = groupByUser(source)
         }
         return sortProcesses(grouped)
     }
@@ -216,6 +255,37 @@ struct ProcessListView: View {
         return String(format: "%.0f MB", mb)
     }
 
+    // MARK: - Filter banner
+
+    @ViewBuilder
+    private var filterBanner: some View {
+        let needles = nameFilter ?? []
+        HStack(spacing: 8) {
+            Image(systemName: bypassFilter ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(bypassFilter ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
+            if bypassFilter {
+                Text("\(filterLabel) filter off — showing all processes")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                (Text("\(filterLabel): ").font(.system(size: 11, weight: .medium))
+                 + Text(needles.joined(separator: ", "))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary))
+            }
+            Spacer()
+            Button(bypassFilter ? "Apply Filter" : "Show All") {
+                bypassFilter.toggle()
+            }
+            .buttonStyle(.borderless)
+            .font(.system(size: 11))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(bypassFilter ? Color.clear : Color.accentColor.opacity(0.06))
+    }
+
     // MARK: - Sorting
 
     private func toggleSort(_ field: ProcessSortField) {
@@ -295,6 +365,11 @@ struct ProcessListView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
+
+            if nameFilter != nil {
+                Divider()
+                filterBanner
+            }
 
             if grouping == .user {
                 Divider()

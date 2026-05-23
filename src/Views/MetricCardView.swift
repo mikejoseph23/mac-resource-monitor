@@ -12,18 +12,41 @@ struct MetricCardView: View {
     var sparklineTimeRangeSeconds: TimeInterval? = nil
     var sparklineValueFormatter: ((Double) -> String)? = nil
     var details: [(label: String, value: String, color: Color?)] = []
+    var emphasized: Bool = false
+    /// Hides detail rows and shrinks the sparkline for a denser layout.
+    var compact: Bool = false
+
+    private var valueFontSize: CGFloat { emphasized ? 30 : 22 }
+    private var sparklineHeight: CGFloat {
+        if emphasized { return 48 }
+        return compact ? 22 : 28
+    }
+    private var titleFontSize: CGFloat { emphasized ? 13 : 11 }
+    private var iconFontSize: CGFloat { emphasized ? 15 : 13 }
+    private var borderOpacity: Double { emphasized ? 0.45 : 0.15 }
+    private var borderWidth: CGFloat { emphasized ? 1.5 : 1 }
+    private var showDetails: Bool { !compact && !details.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Header row: icon + title + severity dot
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: iconFontSize, weight: .semibold))
                     .foregroundStyle(accentColor)
 
                 Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: titleFontSize, weight: emphasized ? .semibold : .medium))
+                    .foregroundStyle(emphasized ? .primary : .secondary)
+
+                if emphasized {
+                    Text("FEATURED")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .foregroundStyle(accentColor)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(accentColor.opacity(0.15)))
+                }
 
                 Spacer()
 
@@ -35,24 +58,24 @@ struct MetricCardView: View {
             // Value + subtitle on one row
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(value)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: valueFontSize, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
 
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .font(.system(size: emphasized ? 11 : 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
 
             // Sparkline
             SparklineView(dataPoints: sparklineData, lineColor: severity.color, fixedRange: sparklineFixedRange, timeRangeSeconds: sparklineTimeRangeSeconds, valueFormatter: sparklineValueFormatter)
-                .frame(height: 28)
+                .frame(height: sparklineHeight)
                 .padding(.top, 2)
 
             // Detail breakdown rows
-            if !details.isEmpty {
+            if showDetails {
                 Divider()
                     .opacity(0.3)
                     .padding(.top, 2)
@@ -64,15 +87,19 @@ struct MetricCardView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, emphasized ? 14 : (compact ? 10 : 12))
+        .padding(.vertical, emphasized ? 12 : (compact ? 8 : 10))
         .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(severity.color.opacity(0.15), lineWidth: 1)
+                        .strokeBorder(
+                            emphasized ? accentColor.opacity(borderOpacity) : severity.color.opacity(borderOpacity),
+                            lineWidth: borderWidth
+                        )
                 )
+                .shadow(color: emphasized ? accentColor.opacity(0.12) : .clear, radius: 8, y: 2)
         }
     }
 

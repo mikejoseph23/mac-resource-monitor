@@ -5,17 +5,60 @@ enum DashboardTab: String, CaseIterable {
     case processes = "Processes"
 }
 
+private struct DashboardWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 900
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var metricsManager: MetricsManager
     @EnvironmentObject private var layout: DashboardLayout
     @State private var selectedTab: DashboardTab = .dashboard
     @State private var showingLayoutPopover = false
+    @State private var contentWidth: CGFloat = 900
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
-    ]
+    private let columnCount = 3
+    private let columnSpacing: CGFloat = 10
+    private let horizontalInset: CGFloat = 50
+
+    private var unitColumnWidth: CGFloat {
+        max(((contentWidth - columnSpacing * CGFloat(columnCount - 1)) / CGFloat(columnCount)), 100)
+    }
+
+    private func columnWidth(span: Int) -> CGFloat {
+        unitColumnWidth * CGFloat(span) + columnSpacing * CGFloat(span - 1)
+    }
+
+    /// Visible widgets paired with their column span, packed into rows of
+    /// total span ≤ columnCount. Emphasized widgets span 2; others span 1.
+    /// Uses first-fit-with-lookahead so a span-2 card grabs the next span-1
+    /// card to fill the row, instead of sitting alone with empty space.
+    private var packedRows: [[(widget: DashboardWidget, span: Int)]] {
+        var queue: [(DashboardWidget, Int)] = layout.orderedGridWidgets()
+            .filter { shouldRender($0) }
+            .map { ($0, layout.activeProfile.emphasized.contains($0) ? 2 : 1) }
+
+        var rows: [[(DashboardWidget, Int)]] = []
+        while !queue.isEmpty {
+            let first = queue.removeFirst()
+            var row: [(DashboardWidget, Int)] = [first]
+            var width = first.1
+            var idx = 0
+            while width < columnCount && idx < queue.count {
+                if queue[idx].1 + width <= columnCount {
+                    row.append(queue[idx])
+                    width += queue[idx].1
+                    queue.remove(at: idx)
+                } else {
+                    idx += 1
+                }
+            }
+            rows.append(row)
+        }
+        return rows
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,27 +72,38 @@ struct DashboardView: View {
             case .dashboard:
                 ScrollView {
                     VStack(spacing: 10) {
-                        LazyVGrid(columns: columns, spacing: 10) {
-                            if layout.isVisible(.cpu)       { cpuCard }
-                            if layout.isVisible(.memory)    { memoryCard }
-                            if layout.isVisible(.gpu)       { gpuCard }
-                            if layout.isVisible(.disk)      { diskCard }
-                            if layout.isVisible(.network)   { networkCard }
-                            if layout.isVisible(.thermal)   { thermalCard }
-                            if metricsManager.currentSnapshot?.power != nil {
-                                if layout.isVisible(.power)     { powerCard }
-                                if layout.isVisible(.frequency) { frequencyCard }
-                            }
+                        Color.clear
+                            .frame(height: 0)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear
+                                        .preference(key: DashboardWidthKey.self,
+                                                    value: proxy.size.width)
+                                }
+                            )
+                        if layout.activeProfile.emphasized.isEmpty {
+                            uniformGridLayout
+                        } else {
+                            twoColumnLayout
                         }
-
-                        bottomPanelsRow
                     }
-                    .padding(12)
+                    .padding(.horizontal, horizontalInset)
+                    .padding(.vertical, 12)
+                }
+                .onPreferenceChange(DashboardWidthKey.self) { newWidth in
+                    let usable = max(newWidth - horizontalInset * 2, 200)
+                    if abs(usable - contentWidth) > 0.5 {
+                        contentWidth = usable
+                    }
                 }
 
             case .processes:
                 if let snapshot = metricsManager.currentSnapshot {
-                    ProcessListView(processes: snapshot.processes)
+                    ProcessListView(
+                        processes: snapshot.processes,
+                        nameFilter: layout.activeProfile.processNameFilter,
+                        filterLabel: layout.activeProfile.displayName
+                    )
                 } else {
                     Spacer()
                     Text("Waiting for data...")
@@ -84,6 +138,8 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
             Text("MacResourceMonitor")
                 .font(.system(size: 14, weight: .semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             Spacer().frame(width: 16)
 
@@ -101,10 +157,23 @@ struct DashboardView: View {
             // Display mode toggle and time range (only on dashboard tab)
             if selectedTab == .dashboard {
                 HStack(spacing: 4) {
-                    Image(systemName: "clock")
+                    Image(systemName: "square.grid.2x2")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    Text("Sparkline:")
+                    Picker("", selection: $layout.activeProfile) {
+                        ForEach(DashboardProfile.allCases) { profile in
+                            Text(profile.displayName).tag(profile)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 140)
+                    .help("Dashboard profile — reorders cards and filters processes for a use case")
+                }
+
+                Spacer().frame(width: 8)
+
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     Picker("", selection: $metricsManager.timeRange) {
@@ -114,6 +183,7 @@ struct DashboardView: View {
                     }
                     .pickerStyle(.menu)
                     .frame(width: 80)
+                    .help("Sparkline time range")
                 }
 
                 Spacer().frame(width: 8)
@@ -190,6 +260,65 @@ struct DashboardView: View {
         .frame(width: 220)
     }
 
+    // MARK: - Dashboard layouts
+
+    /// Default profile: uniform 3-column grid, with bottom panels (Storage,
+    /// LM Studio) laid out side-by-side beneath.
+    private var uniformGridLayout: some View {
+        VStack(spacing: 10) {
+            let rows = packedRows
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: columnSpacing) {
+                    ForEach(row, id: \.widget) { item in
+                        card(for: item.widget, emphasized: false, compact: false)
+                            .frame(width: columnWidth(span: item.span))
+                    }
+                    if row.reduce(0, { $0 + $1.span }) < columnCount {
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+
+            bottomPanelsRow
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Profiles with emphasis: featured cards stacked in a 2/3 left column,
+    /// compact cards + Storage + LM Studio panels stacked in a 1/3 right
+    /// column so the right-side space below the short widgets gets used.
+    private var twoColumnLayout: some View {
+        let widgets = layout.orderedGridWidgets().filter { shouldRender($0) }
+        let featured = widgets.filter { layout.activeProfile.emphasized.contains($0) }
+        let compactList = widgets.filter { !layout.activeProfile.emphasized.contains($0) }
+        let volumes = metricsManager.currentSnapshot?.disk.volumes ?? []
+        let showVolumes  = layout.isVisible(.volumes) && !volumes.isEmpty
+        let showLMStudio = layout.isVisible(.lmStudio)
+
+        return HStack(alignment: .top, spacing: columnSpacing) {
+            VStack(spacing: 10) {
+                ForEach(featured) { widget in
+                    card(for: widget, emphasized: true, compact: false)
+                }
+            }
+            .frame(width: columnWidth(span: 2))
+
+            VStack(spacing: 10) {
+                ForEach(compactList) { widget in
+                    card(for: widget, emphasized: false, compact: true)
+                }
+                if showVolumes {
+                    VolumesPanelView(volumes: volumes)
+                }
+                if showLMStudio {
+                    aiBackendsSection
+                }
+            }
+            .frame(width: columnWidth(span: 1))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: - Bottom panels (Storage + AI backends, side by side)
 
     @ViewBuilder
@@ -214,7 +343,32 @@ struct DashboardView: View {
 
     // MARK: - Cards
 
-    private var cpuCard: some View {
+    private func shouldRender(_ widget: DashboardWidget) -> Bool {
+        guard layout.isVisible(widget) else { return false }
+        if widget == .power || widget == .frequency {
+            return metricsManager.currentSnapshot?.power != nil
+        }
+        return true
+    }
+
+    @ViewBuilder
+    private func card(for widget: DashboardWidget, emphasized: Bool, compact: Bool) -> some View {
+        switch widget {
+        case .cpu:        cpuCard(emphasized: emphasized, compact: compact)
+        case .memory:     memoryCard(emphasized: emphasized, compact: compact)
+        case .gpu:        gpuCard(emphasized: emphasized, compact: compact)
+        case .disk:       diskCard(emphasized: emphasized, compact: compact)
+        case .network:    networkCard(emphasized: emphasized, compact: compact)
+        case .thermal:    thermalCard(emphasized: emphasized, compact: compact)
+        case .power:      powerCard(emphasized: emphasized, compact: compact)
+        case .frequency:  frequencyCard(emphasized: emphasized, compact: compact)
+        case .volumes, .lmStudio:
+            // Rendered in bottomPanelsRow, not in the grid.
+            EmptyView()
+        }
+    }
+
+    private func cpuCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let cpu = snapshot?.cpu
         let usage = cpu?.totalUsage ?? 0
@@ -241,11 +395,13 @@ struct DashboardView: View {
                 ("Idle", String(format: "%.2f%%", cpu?.idleUsage ?? 0), nil),
                 ("Threads", formatCount(cpu?.threadCount ?? 0), nil),
                 ("Processes", formatCount(cpu?.processCount ?? 0), nil),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
-    private var memoryCard: some View {
+    private func memoryCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let mem = snapshot?.memory
         let usage = mem?.usagePercent ?? 0
@@ -277,11 +433,13 @@ struct DashboardView: View {
                 ("Compressed", formatGBorMB(mem?.compressedBytes ?? 0), Color.orange),
                 ("Cached", formatGBorMB(mem?.cachedBytes ?? 0), nil),
                 ("Swap Used", formatGBorMB(mem?.swapUsedBytes ?? 0), Color.yellow),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
-    private var gpuCard: some View {
+    private func gpuCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let usage = snapshot?.gpu.utilizationPercent ?? 0
         let coreCount = snapshot?.gpu.coreCount ?? 0
@@ -307,11 +465,13 @@ struct DashboardView: View {
                 ("Chip", snapshot?.gpu.chipName ?? "Apple Silicon", nil),
                 ("Total Cores", "\(coreCount)", nil),
                 ("Neural Engine", "\(snapshot?.gpu.neuralEngineCoreCount ?? 16) cores", nil),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
-    private var diskCard: some View {
+    private func diskCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let disk = snapshot?.disk
         let readRate = disk?.readBytesPerSec ?? 0
@@ -345,11 +505,13 @@ struct DashboardView: View {
                 ("Write Ops/sec", String(format: "%.0f", disk?.writeOpsPerSec ?? 0), nil),
                 ("Total Read", formatGBorMB(disk?.totalReadBytes ?? 0), nil),
                 ("Total Written", formatGBorMB(disk?.totalWriteBytes ?? 0), nil),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
-    private var networkCard: some View {
+    private func networkCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let net = snapshot?.network
         let inBytes = net?.bytesInPerSec ?? 0
@@ -378,11 +540,13 @@ struct DashboardView: View {
                 ("Packets Out/sec", String(format: "%.0f", net?.packetsOutPerSec ?? 0), nil),
                 ("Data Received", formatGBorMB(net?.totalBytesIn ?? 0), nil),
                 ("Data Sent", formatGBorMB(net?.totalBytesOut ?? 0), nil),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
-    private var powerCard: some View {
+    private func powerCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let power = snapshot?.power
         let total = power?.totalPowerWatts ?? 0
@@ -404,11 +568,13 @@ struct DashboardView: View {
                 ("GPU",   String(format: "%.2f W", gpuW), Color.orange),
                 ("ANE",   String(format: "%.2f W", aneW), Color.purple),
                 ("Total", String(format: "%.2f W", total), nil),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
-    private var frequencyCard: some View {
+    private func frequencyCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let power = snapshot?.power
         let ecpu = power?.ecpuFreqMHz ?? 0
@@ -428,11 +594,13 @@ struct DashboardView: View {
                 ("E-CPU", ecpu > 0 ? "\(ecpu) MHz" : "idle", Color.cyan),
                 ("P-CPU", pcpu > 0 ? "\(pcpu) MHz" : "idle", Color.blue),
                 ("GPU",   gpu  > 0 ? "\(gpu) MHz"  : "idle", Color.orange),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
-    private var thermalCard: some View {
+    private func thermalCard(emphasized: Bool, compact: Bool) -> some View {
         let snapshot = metricsManager.currentSnapshot
         let state = snapshot?.thermal.thermalState ?? .nominal
         let isThrottled = snapshot?.thermal.isThrottled ?? false
@@ -455,7 +623,9 @@ struct DashboardView: View {
                 ("CPU Load", String(format: "%.1f%%", cpuUsage), nil),
                 ("GPU Load", String(format: "%.1f%%", gpuUsage), nil),
                 ("Pressure", snapshot?.memory.pressureLevel.rawValue ?? "N/A", nil),
-            ]
+            ],
+            emphasized: emphasized,
+            compact: compact
         )
     }
 
