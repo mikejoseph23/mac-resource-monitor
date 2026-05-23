@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Build a release .app bundle and pack it into a polished drag-to-Applications
-# DMG. Uses only stock tools (hdiutil, codesign, osascript) — no Homebrew deps.
+# DMG.
+#
+# Signing modes:
+#   default      ad-hoc signed (Gatekeeper will warn on download)
+#   SIGN_ID=...  sign with the given codesign identity (e.g. "Developer ID
+#                Application: NAME (TEAMID)"). Adds hardened runtime + secure
+#                timestamp so the artifact is notarization-ready.
+#   NOTARIZE_PROFILE=... after signing, submits the DMG to Apple's notary
+#                service using the named keychain credential profile (created
+#                via `xcrun notarytool store-credentials <name>`), waits for
+#                approval, and staples the ticket. Requires SIGN_ID.
 #
 # Output: dist/Mac Resource Monitor.app, dist/Mac Resource Monitor.dmg,
 #         dist/Mac Resource Monitor.zip
@@ -18,6 +28,10 @@ DMG="$DIST/$APP_NAME.dmg"
 ZIP="$DIST/$APP_NAME.zip"
 SCRATCH="$DIST/.dmg-scratch"
 RW_DMG="$DIST/.rw.dmg"
+ENTITLEMENTS="src/MacResourceMonitor.entitlements"
+
+SIGN_ID="${SIGN_ID:-}"
+NOTARIZE_PROFILE="${NOTARIZE_PROFILE:-}"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' src/Info.plist 2>/dev/null || echo 0.1.0)"
 
@@ -60,8 +74,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "==> Ad-hoc signing"
-codesign --force --deep --sign - "$APP" >/dev/null
+if [ -n "$SIGN_ID" ]; then
+    echo "==> Signing .app with $SIGN_ID"
+    codesign --force --deep --options runtime --timestamp \
+        --entitlements "$ENTITLEMENTS" \
+        --sign "$SIGN_ID" "$APP"
+else
+    echo "==> Ad-hoc signing .app"
+    codesign --force --deep --sign - "$APP" >/dev/null
+fi
 codesign --verify --deep --strict "$APP"
 
 echo "==> Building zip"
@@ -146,6 +167,32 @@ hdiutil detach "$MOUNT" -quiet 2>/dev/null || hdiutil detach "$MOUNT" -force -qu
 hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
 rm -f "$RW_DMG"
 rm -rf "$SCRATCH"
+
+if [ -n "$SIGN_ID" ]; then
+    echo "==> Signing DMG"
+    codesign --force --sign "$SIGN_ID" --timestamp "$DMG"
+fi
+
+if [ -n "$NOTARIZE_PROFILE" ]; then
+    if [ -z "$SIGN_ID" ]; then
+        echo "!! NOTARIZE_PROFILE set but SIGN_ID is empty — notarization needs a signed artifact" >&2
+        exit 1
+    fi
+    echo "==> Submitting DMG to Apple notary (profile: $NOTARIZE_PROFILE)"
+    xcrun notarytool submit "$DMG" \
+        --keychain-profile "$NOTARIZE_PROFILE" \
+        --wait
+    echo "==> Stapling notarization ticket to DMG and .app"
+    xcrun stapler staple "$DMG"
+    xcrun stapler validate "$DMG"
+    # Staple the .app too so users who download the zip get an offline-verifiable
+    # bundle. Without this, Gatekeeper has to fetch the ticket online on first
+    # launch from the unzipped app.
+    xcrun stapler staple "$APP"
+    echo "==> Rebuilding zip with stapled .app"
+    rm -f "$ZIP"
+    (cd "$DIST" && ditto -c -k --keepParent "$APP_NAME.app" "$APP_NAME.zip")
+fi
 
 echo "==> Done"
 ls -lh "$APP" "$DMG" "$ZIP" 2>/dev/null | awk '{print "    " $0}'

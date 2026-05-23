@@ -14,11 +14,11 @@ A native macOS dashboard that consolidates system resource monitoring into a sin
 
 Just want to run it? Grab the latest release — no build tools required.
 
-- **[⬇ Download MacResourceMonitor-v1.0.0.dmg](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.0.0/MacResourceMonitor-v1.0.0.dmg)** (recommended)
-- [Download MacResourceMonitor-v1.0.0.zip](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.0.0/MacResourceMonitor-v1.0.0.zip)
+- **[⬇ Download MacResourceMonitor-v1.1.0.dmg](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.1.0/MacResourceMonitor-v1.1.0.dmg)** (recommended)
+- [Download MacResourceMonitor-v1.1.0.zip](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.1.0/MacResourceMonitor-v1.1.0.zip)
 - [All releases](https://github.com/mikejoseph23/mac-resource-monitor/releases)
 
-Open the DMG (or unzip) and drag **Mac Resource Monitor.app** into `/Applications`. On first launch, right-click the app and choose **Open** to bypass Gatekeeper (the app is unsigned).
+Open the DMG and drag **Mac Resource Monitor.app** into `/Applications`. The release is signed with a Developer ID certificate and notarized by Apple, so it launches without Gatekeeper warnings.
 
 ## Why
 
