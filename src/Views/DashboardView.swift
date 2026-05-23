@@ -132,17 +132,7 @@ struct DashboardView: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        HStack {
-            Image(systemName: "gauge.open.with.lines.needle.33percent.badge.arrow.down")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
-            Text("MacResourceMonitor")
-                .font(.system(size: 14, weight: .semibold))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-
-            Spacer().frame(width: 16)
-
+        HStack(spacing: 12) {
             // Tab picker
             Picker("", selection: $selectedTab) {
                 ForEach(DashboardTab.allCases, id: \.self) { tab in
@@ -156,37 +146,23 @@ struct DashboardView: View {
 
             // Display mode toggle and time range (only on dashboard tab)
             if selectedTab == .dashboard {
-                HStack(spacing: 4) {
-                    Image(systemName: "square.grid.2x2")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Picker("", selection: $layout.activeProfile) {
-                        ForEach(DashboardProfile.allCases) { profile in
-                            Text(profile.displayName).tag(profile)
-                        }
+                Picker("", selection: $layout.activeProfile) {
+                    ForEach(DashboardProfile.allCases) { profile in
+                        Text(profile.displayName).tag(profile)
                     }
-                    .pickerStyle(.menu)
-                    .frame(width: 140)
-                    .help("Dashboard profile — reorders cards and filters processes for a use case")
                 }
+                .pickerStyle(.menu)
+                .frame(width: 140)
+                .help("Dashboard profile — reorders cards and filters processes for a use case")
 
-                Spacer().frame(width: 8)
-
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Picker("", selection: $metricsManager.timeRange) {
-                        ForEach(TimeRange.allCases, id: \.self) { range in
-                            Text(range.rawValue).tag(range)
-                        }
+                Picker("", selection: $metricsManager.timeRange) {
+                    ForEach(TimeRange.allCases, id: \.self) { range in
+                        Text(range.rawValue).tag(range)
                     }
-                    .pickerStyle(.menu)
-                    .frame(width: 80)
-                    .help("Sparkline time range")
                 }
-
-                Spacer().frame(width: 8)
+                .pickerStyle(.menu)
+                .frame(width: 80)
+                .help("Sparkline time range")
 
                 Picker("", selection: $metricsManager.displayMode) {
                     ForEach(DisplayMode.allCases, id: \.self) { mode in
@@ -195,8 +171,6 @@ struct DashboardView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 160)
-
-                Spacer().frame(width: 12)
 
                 Button {
                     showingLayoutPopover.toggle()
@@ -209,19 +183,13 @@ struct DashboardView: View {
                 .popover(isPresented: $showingLayoutPopover, arrowEdge: .bottom) {
                     layoutPopover
                 }
-
-                Spacer().frame(width: 8)
             }
 
             // Running indicator
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(metricsManager.isRunning ? Color.green : Color.gray)
-                    .frame(width: 7, height: 7)
-                Text(metricsManager.isRunning ? "Live" : "Paused")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
+            Circle()
+                .fill(metricsManager.isRunning ? Color.green : Color.gray)
+                .frame(width: 7, height: 7)
+                .help(metricsManager.isRunning ? "Live" : "Paused")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

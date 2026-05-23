@@ -39,15 +39,6 @@ struct MetricCardView: View {
                     .font(.system(size: titleFontSize, weight: emphasized ? .semibold : .medium))
                     .foregroundStyle(emphasized ? .primary : .secondary)
 
-                if emphasized {
-                    Text("FEATURED")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundStyle(accentColor)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(accentColor.opacity(0.15)))
-                }
-
                 Spacer()
 
                 Circle()
