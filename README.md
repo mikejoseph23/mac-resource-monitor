@@ -4,7 +4,11 @@ A native macOS dashboard that consolidates system resource monitoring into a sin
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue) ![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-![Mac Resource Monitor dashboard](screenshot.png)
+![Mac Resource Monitor — Default dashboard](screenshot.png)
+
+*Default dashboard.* Switch to the **Local Inference** profile to feature Memory, GPU, and Power for LLM workloads:
+
+![Mac Resource Monitor — Local Inference profile](screenshot-inference.png)
 
 ## Download
 

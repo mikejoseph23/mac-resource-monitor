@@ -365,7 +365,8 @@ struct DashboardView: View {
                 ("Processes", formatCount(cpu?.processCount ?? 0), nil),
             ],
             emphasized: emphasized,
-            compact: compact
+            compact: compact,
+            gaugeFraction: usage / 100.0
         )
     }
 
@@ -403,7 +404,8 @@ struct DashboardView: View {
                 ("Swap Used", formatGBorMB(mem?.swapUsedBytes ?? 0), Color.yellow),
             ],
             emphasized: emphasized,
-            compact: compact
+            compact: compact,
+            gaugeFraction: usage / 100.0
         )
     }
 
@@ -435,7 +437,8 @@ struct DashboardView: View {
                 ("Neural Engine", "\(snapshot?.gpu.neuralEngineCoreCount ?? 16) cores", nil),
             ],
             emphasized: emphasized,
-            compact: compact
+            compact: compact,
+            gaugeFraction: usage / 100.0
         )
     }
 
@@ -475,7 +478,8 @@ struct DashboardView: View {
                 ("Total Written", formatGBorMB(disk?.totalWriteBytes ?? 0), nil),
             ],
             emphasized: emphasized,
-            compact: compact
+            compact: compact,
+            gaugeFraction: usagePercent / 100.0
         )
     }
 
