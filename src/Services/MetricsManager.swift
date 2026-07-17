@@ -39,16 +39,14 @@ class MetricsManager: ObservableObject {
     private var timer: Timer?
     var refreshInterval: TimeInterval = 2.0
 
-    private let cpuCollector = CPUCollector()
-    private let memoryCollector = MemoryCollector()
-    private let gpuCollector = GPUCollector()
-    private let diskCollector = DiskCollector()
-    private let networkCollector = NetworkCollector()
-    private let thermalCollector = ThermalCollector()
-    private let powerCollector = PowerCollector()
-    private let selfCollector = SelfMetricsCollector()
-    private let processCollector = ProcessCollector()
-    private let lmStudioCollector = LMStudioCollector()
+    /// All collection runs on this actor's background executor, off the main
+    /// thread. See `CollectionEngine` for the isolation model.
+    private let engine = CollectionEngine()
+
+    /// Guards against a new pass starting before the previous one finishes if a
+    /// collection tick runs longer than `refreshInterval`. MainActor-isolated,
+    /// so the check/set is race-free.
+    private var isCollecting = false
 
     init() {
         start()
@@ -80,33 +78,15 @@ class MetricsManager: ObservableObject {
     }
 
     private func collectMetrics() async {
-        // Fire LM Studio request concurrently with synchronous collectors
-        async let lmStudioResult = lmStudioCollector.collect()
+        // Skip this tick if the previous pass is still running so passes never
+        // overlap or reenter (preserves the 2s cadence without pile-up).
+        guard !isCollecting else { return }
+        isCollecting = true
+        defer { isCollecting = false }
 
-        let cpu = cpuCollector.collect()
-        let memory = memoryCollector.collect()
-        let gpu = gpuCollector.collect()
-        let disk = diskCollector.collect()
-        let network = networkCollector.collect()
-        let thermal = thermalCollector.collect()
-        let power = powerCollector.collect()
-        let selfMetrics = selfCollector.collect()
-        let processes = processCollector.collect()
-        let lmStudio = await lmStudioResult
-
-        let snapshot = SystemSnapshot(
-            timestamp: Date(),
-            cpu: cpu,
-            memory: memory,
-            gpu: gpu,
-            disk: disk,
-            network: network,
-            thermal: thermal,
-            power: power,
-            selfMetrics: selfMetrics,
-            processes: processes,
-            lmStudio: lmStudio
-        )
+        // Runs off-main on the engine actor; only the snapshot marshals back to
+        // the main actor for the @Published assignment below.
+        let snapshot = await engine.collect()
         currentSnapshot = snapshot
         history.append(snapshot)
     }
