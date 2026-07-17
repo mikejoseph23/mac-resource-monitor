@@ -67,4 +67,10 @@ class MetricsHistory: ObservableObject {
             snap.power.map { ($0.timestamp, $0.totalPowerWatts) }
         }
     }
+
+    func pcpuFrequencyHistory(range: TimeRange) -> [(Date, Double)] {
+        snapshots(in: range).compactMap { snap in
+            snap.power.map { ($0.timestamp, Double($0.pcpuFreqMHz) / 1000.0) }
+        }
+    }
 }

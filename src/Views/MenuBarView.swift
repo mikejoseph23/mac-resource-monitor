@@ -43,7 +43,7 @@ struct MenuBarView: View {
 
                 // GPU
                 MetricRow(
-                    icon: "gpu",
+                    icon: "rectangle.3.group",
                     label: "GPU",
                     value: snapshot.gpu.utilizationPercent,
                     color: colorForUsage(snapshot.gpu.utilizationPercent)
@@ -70,9 +70,10 @@ struct MenuBarView: View {
                     Text("LM Studio")
                         .font(.subheadline)
                     Spacer()
-                    Text("Not Connected")
+                    let lm = snapshot.lmStudio
+                    Text(lm.status == .connected ? "Connected" : "Not Connected")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(lm.status == .connected ? Color.green : Color.secondary)
                 }
             } else {
                 HStack {
