@@ -44,9 +44,13 @@ struct MetricCardView: View {
 
                 Spacer()
 
-                Circle()
-                    .fill(severity.color)
-                    .frame(width: 6, height: 6)
+                // Severity indicator: color + a shape-distinct glyph so the
+                // state reads without relying on hue alone (colorblind-safe).
+                Image(systemName: severity.glyph)
+                    .font(.system(size: severity.glyphSize, weight: .bold))
+                    .foregroundStyle(severity.color)
+                    .help(severity.label)
+                    .accessibilityLabel(severity.label)
             }
 
             // Value + subtitle on one row. When a gauge fraction is provided
@@ -68,9 +72,13 @@ struct MetricCardView: View {
                         .minimumScaleFactor(0.6)
                 }
 
+                // Secondary readout (e.g. "96.6 / 512 GB"). For the inference
+                // use case this figure often matters more than the headline %,
+                // so it's kept legible — secondary tone + medium weight rather
+                // than a faint 10pt tertiary line.
                 Text(subtitle)
-                    .font(.system(size: emphasized ? 11 : 10))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: emphasized ? 12 : 11, weight: .medium))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
@@ -164,28 +172,8 @@ struct ValueGaugeView: View {
     }
 }
 
-// MARK: - Severity
-
-enum MetricSeverity {
-    case normal
-    case warning
-    case critical
-
-    var color: Color {
-        switch self {
-        case .normal:   return .green
-        case .warning:  return .orange
-        case .critical: return .red
-        }
-    }
-
-    /// Create severity from a 0-100 percentage value.
-    static func from(percent: Double, warningAt: Double = 70, criticalAt: Double = 90) -> MetricSeverity {
-        if percent >= criticalAt { return .critical }
-        if percent >= warningAt  { return .warning }
-        return .normal
-    }
-}
+// `MetricSeverity` lives in `src/Models/MetricSeverity.swift` — the single
+// source of truth for thresholds, colors, and glyphs across all surfaces.
 
 #Preview {
     let sampleData: [(Date, Double)] = (0..<30).map { i in

@@ -7,6 +7,10 @@ struct SparklineView: View {
     let fixedRange: (min: Double, max: Double)?
     let timeRangeSeconds: TimeInterval?
     var valueFormatter: ((Double) -> String)?
+    /// Draws faint min/max scale labels in the corners. Auto-ranged sparklines
+    /// otherwise render a flat-low series identically to a flat-high one, so the
+    /// labels are what tell you *which* level the line is sitting at.
+    var showScaleLabels: Bool
 
     @State private var hoverIndex: Int?
 
@@ -16,7 +20,8 @@ struct SparklineView: View {
         maxPoints: Int = 1800,
         fixedRange: (min: Double, max: Double)? = nil,
         timeRangeSeconds: TimeInterval? = nil,
-        valueFormatter: ((Double) -> String)? = nil
+        valueFormatter: ((Double) -> String)? = nil,
+        showScaleLabels: Bool = true
     ) {
         self.dataPoints = dataPoints
         self.lineColor = lineColor
@@ -24,6 +29,7 @@ struct SparklineView: View {
         self.fixedRange = fixedRange
         self.timeRangeSeconds = timeRangeSeconds
         self.valueFormatter = valueFormatter
+        self.showScaleLabels = showScaleLabels
     }
 
     private var visibleData: [(Date, Double)] {
@@ -103,6 +109,21 @@ struct SparklineView: View {
                         // Tooltip
                         sparklineTooltip(index: idx, x: x, containerWidth: geometry.size.width)
                     }
+
+                    // Min/max scale labels (top-left = ceiling, bottom-left =
+                    // floor). Anchored to the empty left gutter so they never
+                    // sit under the right-anchored line. Hidden while hovering
+                    // so the tooltip owns the readout.
+                    if showScaleLabels && hoverIndex == nil {
+                        VStack(alignment: .leading, spacing: 0) {
+                            scaleLabel(maxVal)
+                            Spacer(minLength: 0)
+                            if maxVal - minVal > 0.001 {
+                                scaleLabel(minVal)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
                 }
                 .onContinuousHover { phase in
                     switch phase {
@@ -163,6 +184,20 @@ struct SparklineView: View {
         }
         .fixedSize()
         .position(x: anchorRight ? x + 45 : x - 45, y: 0)
+    }
+
+    private func scaleLabel(_ value: Double) -> some View {
+        let text = valueFormatter?(value) ?? defaultFormat(value)
+        return Text(text)
+            .font(.system(size: 8, weight: .medium, design: .rounded))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .padding(.horizontal, 3)
+            .padding(.vertical, 0.5)
+            .background(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(.background.opacity(0.55))
+            )
     }
 
     private func defaultFormat(_ value: Double) -> String {

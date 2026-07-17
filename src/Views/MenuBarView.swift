@@ -113,11 +113,9 @@ struct MenuBarView: View {
     // MARK: - Helpers
 
     private func colorForUsage(_ percent: Double) -> Color {
-        switch percent {
-        case 0..<50: return .green
-        case 50..<80: return .yellow
-        default: return .red
-        }
+        // Unified with the dashboard: MetricSeverity owns the thresholds
+        // (70 / 90) and the green / orange / red palette.
+        MetricSeverity.utilization(percent).color
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {

@@ -326,6 +326,7 @@ struct DashboardView: View {
         case .memory:     memoryCard(emphasized: emphasized, compact: compact)
         case .gpu:        gpuCard(emphasized: emphasized, compact: compact)
         case .disk:       diskCard(emphasized: emphasized, compact: compact)
+        case .diskIO:     diskIOCard(emphasized: emphasized, compact: compact)
         case .network:    networkCard(emphasized: emphasized, compact: compact)
         case .thermal:    thermalCard(emphasized: emphasized, compact: compact)
         case .power:      powerCard(emphasized: emphasized, compact: compact)
@@ -442,26 +443,47 @@ struct DashboardView: View {
         )
     }
 
+    /// Disk **capacity** card — how full the boot volume is. Capacity and I/O
+    /// throughput are unrelated metrics, so they live on separate cards now
+    /// (the old combined card paired a capacity gauge with an I/O sparkline).
     private func diskCard(emphasized: Bool, compact: Bool) -> some View {
-        let snapshot = metricsManager.currentSnapshot
-        let disk = snapshot?.disk
-        let readRate = disk?.readBytesPerSec ?? 0
-        let writeRate = disk?.writeBytesPerSec ?? 0
-        let combinedRate = readRate + writeRate
+        let disk = metricsManager.currentSnapshot?.disk
         let totalBytes = Double(disk?.totalDiskSpace ?? 0)
         let usedBytes = Double(disk?.usedDiskSpace ?? 0)
+        let freeBytes = max(totalBytes - usedBytes, 0)
         let usagePercent = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0
-        let spaceStr = formatDiskSpace(used: usedBytes, total: totalBytes)
         return MetricCardView(
             title: "Disk",
             icon: "internaldrive",
-            value: isActual
-                ? formatIORate(combinedRate)
-                : String(format: "%.0f%%", usagePercent),
-            subtitle: isActual
-                ? spaceStr
-                : String(format: "R: %@  W: %@", formatIORate(readRate), formatIORate(writeRate)),
-            severity: isActual ? .normal : .from(percent: usagePercent, warningAt: 80, criticalAt: 95),
+            value: String(format: "%.0f%%", usagePercent),
+            subtitle: formatDiskSpace(used: usedBytes, total: totalBytes),
+            severity: .capacity(usagePercent),
+            sparklineData: [],
+            accentColor: .teal,
+            details: [
+                ("Used", formatGBorMB(disk?.usedDiskSpace ?? 0), nil),
+                ("Free", formatGBorMB(UInt64(freeBytes)), nil),
+                ("Total", formatGBorMB(disk?.totalDiskSpace ?? 0), nil),
+            ],
+            emphasized: emphasized,
+            compact: compact,
+            gaugeFraction: usagePercent / 100.0
+        )
+    }
+
+    /// Disk **I/O** card — live read/write throughput. Split out from the
+    /// capacity card so the sparkline plots the metric the headline describes.
+    private func diskIOCard(emphasized: Bool, compact: Bool) -> some View {
+        let disk = metricsManager.currentSnapshot?.disk
+        let readRate = disk?.readBytesPerSec ?? 0
+        let writeRate = disk?.writeBytesPerSec ?? 0
+        let combinedRate = readRate + writeRate
+        return MetricCardView(
+            title: "Disk I/O",
+            icon: "arrow.up.arrow.down",
+            value: formatIORate(combinedRate),
+            subtitle: String(format: "R: %@  W: %@", formatIORate(readRate), formatIORate(writeRate)),
+            severity: .normal,
             sparklineData: metricsManager.history.diskReadHistory(range: selectedRange),
             accentColor: .teal,
             sparklineTimeRangeSeconds: selectedRange.seconds,
@@ -478,8 +500,7 @@ struct DashboardView: View {
                 ("Total Written", formatGBorMB(disk?.totalWriteBytes ?? 0), nil),
             ],
             emphasized: emphasized,
-            compact: compact,
-            gaugeFraction: usagePercent / 100.0
+            compact: compact
         )
     }
 

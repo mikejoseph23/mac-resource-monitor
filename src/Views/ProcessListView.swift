@@ -537,7 +537,7 @@ private struct GroupHeaderRow: View {
     private func cpuText(_ value: Double) -> some View {
         Text(String(format: "%5.1f%%", value))
             .font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundStyle(value >= 80 ? .red : value >= 40 ? .orange : .primary)
+            .foregroundStyle(processCPUColor(value))
     }
 
     private func memoryText(_ bytes: UInt64) -> some View {
@@ -551,6 +551,17 @@ private struct GroupHeaderRow: View {
         let mb = Double(bytes) / (1024 * 1024)
         if mb >= 1024 { return String(format: "%5.1f GB", mb / 1024) }
         return String(format: "%5.0f MB", mb)
+    }
+}
+
+/// Text color for a per-process CPU% reading. Healthy processes stay in the
+/// calm primary tone; the warning/critical tones come from the shared
+/// `MetricSeverity` (unified 70 / 90 thresholds, matching every other surface).
+func processCPUColor(_ value: Double) -> Color {
+    switch MetricSeverity.utilization(value) {
+    case .normal:   return .primary
+    case .warning:  return MetricSeverity.warning.color
+    case .critical: return MetricSeverity.critical.color
     }
 }
 
@@ -604,7 +615,7 @@ struct ProcessRowContent: View {
 
             Text(formatCPU(process.cpuUsage))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(colorForCPU(process.cpuUsage))
+                .foregroundStyle(processCPUColor(process.cpuUsage))
                 .frame(width: 80, alignment: .trailing)
                 .padding(.trailing, 12)
 
@@ -618,12 +629,6 @@ struct ProcessRowContent: View {
     private func formatCPU(_ value: Double) -> String {
         if value == 0 { return "—" }
         return String(format: "%5.1f%%", value)
-    }
-
-    private func colorForCPU(_ value: Double) -> Color {
-        if value >= 80 { return .red }
-        if value >= 40 { return .orange }
-        return .primary
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {

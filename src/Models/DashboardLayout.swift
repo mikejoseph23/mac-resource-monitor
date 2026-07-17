@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 enum DashboardWidget: String, CaseIterable, Identifiable {
-    case cpu, memory, gpu, disk, network, thermal, power, frequency
+    case cpu, memory, gpu, disk, diskIO, network, thermal, power, frequency
     case volumes, lmStudio
 
     var id: String { rawValue }
@@ -13,6 +13,7 @@ enum DashboardWidget: String, CaseIterable, Identifiable {
         case .memory:     return "Memory"
         case .gpu:        return "GPU"
         case .disk:       return "Disk"
+        case .diskIO:     return "Disk I/O"
         case .network:    return "Network"
         case .thermal:    return "Thermal"
         case .power:      return "Power"
@@ -46,13 +47,13 @@ enum DashboardProfile: String, CaseIterable, Identifiable {
     var gridOrder: [DashboardWidget] {
         switch self {
         case .default:
-            return [.cpu, .memory, .gpu, .disk, .network, .thermal, .power, .frequency]
+            return [.cpu, .memory, .gpu, .disk, .diskIO, .network, .thermal, .power, .frequency]
         case .localInference:
             // Inference-critical first: RAM/swap, GPU utilization, power draw
             // and clocks (so you can see if the chip is actually working),
             // thermal (throttling kills tok/s). CPU still matters for
             // tokenization + helpers. Disk for model loads. Network last.
-            return [.memory, .gpu, .power, .frequency, .thermal, .cpu, .disk, .network]
+            return [.memory, .gpu, .power, .frequency, .thermal, .cpu, .disk, .diskIO, .network]
         }
     }
 
@@ -114,7 +115,7 @@ final class DashboardLayout: ObservableObject {
     /// Widgets for the metrics grid in the active profile's order. Any
     /// widget the profile forgot is appended so nothing silently disappears.
     func orderedGridWidgets() -> [DashboardWidget] {
-        let gridWidgets: [DashboardWidget] = [.cpu, .memory, .gpu, .disk,
+        let gridWidgets: [DashboardWidget] = [.cpu, .memory, .gpu, .disk, .diskIO,
                                               .network, .thermal, .power, .frequency]
         let ordered = activeProfile.gridOrder.filter { gridWidgets.contains($0) }
         let missing = gridWidgets.filter { !ordered.contains($0) }
