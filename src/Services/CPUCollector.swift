@@ -43,10 +43,10 @@ final class CPUCollector {
             // CPU tick counters are unsigned but exposed as Int32; once a
             // per-core counter passes 2³¹ a plain UInt64() cast on a negative
             // Int32 traps. Reinterpret the bit pattern as UInt32 first.
-            currentTicks[base + 0] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_USER)]))
-            currentTicks[base + 1] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_SYSTEM)]))
-            currentTicks[base + 2] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_IDLE)]))
-            currentTicks[base + 3] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_NICE)]))
+            currentTicks[base + 0] = Self.unsignedTicks(from: info[Int(infoBase + CPU_STATE_USER)])
+            currentTicks[base + 1] = Self.unsignedTicks(from: info[Int(infoBase + CPU_STATE_SYSTEM)])
+            currentTicks[base + 2] = Self.unsignedTicks(from: info[Int(infoBase + CPU_STATE_IDLE)])
+            currentTicks[base + 3] = Self.unsignedTicks(from: info[Int(infoBase + CPU_STATE_NICE)])
         }
 
         // Deallocate the processor info
@@ -65,10 +65,10 @@ final class CPUCollector {
                 // Guard against 32-bit counter wrap: an unguarded UInt64
                 // subtraction where current < previous underflows into a huge
                 // garbage spike. Zero the delta on wrap (mirrors Disk/Network).
-                let dUser = currentTicks[base + 0] >= prev[base + 0] ? currentTicks[base + 0] - prev[base + 0] : 0
-                let dSystem = currentTicks[base + 1] >= prev[base + 1] ? currentTicks[base + 1] - prev[base + 1] : 0
-                let dIdle = currentTicks[base + 2] >= prev[base + 2] ? currentTicks[base + 2] - prev[base + 2] : 0
-                let dNice = currentTicks[base + 3] >= prev[base + 3] ? currentTicks[base + 3] - prev[base + 3] : 0
+                let dUser = Self.tickDelta(current: currentTicks[base + 0], previous: prev[base + 0])
+                let dSystem = Self.tickDelta(current: currentTicks[base + 1], previous: prev[base + 1])
+                let dIdle = Self.tickDelta(current: currentTicks[base + 2], previous: prev[base + 2])
+                let dNice = Self.tickDelta(current: currentTicks[base + 3], previous: prev[base + 3])
                 let total = dUser + dSystem + dIdle + dNice
 
                 totalUser += dUser + dNice
@@ -113,6 +113,20 @@ final class CPUCollector {
             threadCount: threadCount,
             processCount: processCount
         )
+    }
+
+    /// Reinterprets a raw `host_processor_info` tick counter as unsigned.
+    /// The kernel counter is genuinely unsigned but exposed through the API
+    /// as `Int32`; once it passes 2³¹ a plain `UInt64(_:)` cast on the
+    /// negative `Int32` traps, so the bit pattern is reinterpreted first.
+    static func unsignedTicks(from raw: Int32) -> UInt64 {
+        UInt64(UInt32(bitPattern: raw))
+    }
+
+    /// Wrap-guarded delta between two tick counters: zeroes the sample
+    /// instead of underflowing when a 32-bit counter has wrapped.
+    static func tickDelta(current: UInt64, previous: UInt64) -> UInt64 {
+        current >= previous ? current - previous : 0
     }
 
     /// Returns the number of running processes using proc_listpids.

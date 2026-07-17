@@ -17,5 +17,10 @@ let package = Package(
                 .linkedLibrary("IOReport"),  // private dyld-cache lib for power/freq sampling (Apple Silicon)
             ]
         ),
+        .testTarget(
+            name: "MacResourceMonitorTests",
+            dependencies: ["MacResourceMonitor"],
+            path: "Tests/MacResourceMonitorTests"
+        ),
     ]
 )

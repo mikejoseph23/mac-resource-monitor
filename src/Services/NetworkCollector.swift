@@ -55,7 +55,7 @@ final class NetworkCollector {
         )
     }
 
-    private struct NetworkStats {
+    struct NetworkStats {
         let bytesIn: UInt64
         let bytesOut: UInt64
         let packetsIn: UInt64
@@ -82,6 +82,14 @@ final class NetworkCollector {
             return NetworkStats(bytesIn: 0, bytesOut: 0, packetsIn: 0, packetsOut: 0)
         }
 
+        return Self.parseIFList2Buffer(buf)
+    }
+
+    /// Parses a NET_RT_IFLIST2 sysctl buffer into aggregate counters, skipping
+    /// loopback interfaces. Extracted from `readNetworkStats` so the unaligned
+    /// if_msghdr2 read can be exercised with a synthetic buffer in unit tests.
+    static func parseIFList2Buffer(_ buf: [UInt8]) -> NetworkStats {
+        let len = buf.count
         var totalIn: UInt64 = 0
         var totalOut: UInt64 = 0
         var totalPacketsIn: UInt64 = 0
