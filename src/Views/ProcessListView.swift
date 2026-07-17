@@ -556,9 +556,10 @@ private struct GroupHeaderRow: View {
 
 /// Text color for a per-process CPU% reading. Healthy processes stay in the
 /// calm primary tone; the warning/critical tones come from the shared
-/// `MetricSeverity` (unified 70 / 90 thresholds, matching every other surface).
+/// `MetricSeverity` `processLoad` preset (40 / 80 — a single process reads as
+/// notable earlier than the aggregate CPU/GPU/memory gauges do).
 func processCPUColor(_ value: Double) -> Color {
-    switch MetricSeverity.utilization(value) {
+    switch MetricSeverity.processLoad(value) {
     case .normal:   return .primary
     case .warning:  return MetricSeverity.warning.color
     case .critical: return MetricSeverity.critical.color

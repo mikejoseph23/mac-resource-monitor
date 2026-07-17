@@ -66,6 +66,14 @@ enum MetricSeverity {
         from(percent: percent, warningAt: 80, criticalAt: 95)
     }
 
+    /// Per-process load scale (process list CPU column). A single process
+    /// pegging a core reads as notable well before the aggregate-gauge
+    /// thresholds kick in, so this stays at the pre-unification scale:
+    /// warning at 40%, critical at 80%.
+    static func processLoad(_ percent: Double) -> MetricSeverity {
+        from(percent: percent, warningAt: 40, criticalAt: 80)
+    }
+
     /// General factory from a 0–100 percentage. Prefer the named presets
     /// above; this stays available for one-off scales (e.g. power headroom).
     static func from(percent: Double, warningAt: Double = 70, criticalAt: Double = 90) -> MetricSeverity {
