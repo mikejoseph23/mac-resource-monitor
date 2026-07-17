@@ -33,4 +33,28 @@ final class GPUCollectorTests: XCTestCase {
         XCTAssertEqual(parsed.coreCount, 0)
         XCTAssertEqual(parsed.utilization, 0.0, accuracy: 0.001)
     }
+
+    // #13: the Settings GPU core-count override must win over both the IOKit
+    // reading and the tier default when set (> 0), and must be ignored when
+    // unset (0) so behavior falls back to the M4 detection path.
+
+    func testResolveCoreCountOverrideWinsWhenSet() {
+        let cores = GPUCollector.resolveCoreCount(reported: 40, override: 76, chip: "Apple M3 Max")
+        XCTAssertEqual(cores, 76)
+    }
+
+    func testResolveCoreCountUsesReportedWhenOverrideUnset() {
+        let cores = GPUCollector.resolveCoreCount(reported: 40, override: 0, chip: "Apple M3 Max")
+        XCTAssertEqual(cores, 40)
+    }
+
+    func testResolveCoreCountFallsBackToTierDefaultWhenNothingReported() {
+        let cores = GPUCollector.resolveCoreCount(reported: 0, override: 0, chip: "Apple M3 Ultra")
+        XCTAssertEqual(cores, 80)
+    }
+
+    func testResolveCoreCountIgnoresNegativeOverride() {
+        let cores = GPUCollector.resolveCoreCount(reported: 0, override: -5, chip: "Apple M1")
+        XCTAssertEqual(cores, 8)
+    }
 }

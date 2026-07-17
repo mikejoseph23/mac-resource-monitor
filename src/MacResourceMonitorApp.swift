@@ -25,12 +25,48 @@ struct MacResourceMonitorApp: App {
             }
         }
 
-        MenuBarExtra("Resource Monitor", systemImage: "gauge.with.dots.needle.33percent") {
+        MenuBarExtra {
             MenuBarView()
                 .environmentObject(metricsManager)
                 .environmentObject(layout)
+        } label: {
+            MenuBarLabel()
+                .environmentObject(metricsManager)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+                .environmentObject(layout)
+        }
+    }
+}
+
+/// Live menu-bar label (#12). Replaces the former static gauge glyph: reads
+/// `MetricsManager`'s published snapshot so it re-renders on each 2s collection
+/// tick — no second timer or collection path. Kept deliberately lightweight
+/// (a couple of formatted strings) since the menu-bar label re-renders often.
+private struct MenuBarLabel: View {
+    @EnvironmentObject private var metricsManager: MetricsManager
+
+    var body: some View {
+        if let snapshot = metricsManager.currentSnapshot {
+            HStack(spacing: 5) {
+                Image(systemName: "cpu")
+                Text(percent(snapshot.cpu.totalUsage))
+                    .foregroundStyle(MetricSeverity.utilization(snapshot.cpu.totalUsage).color)
+                Image(systemName: "rectangle.3.group")
+                Text(percent(snapshot.gpu.utilizationPercent))
+                    .foregroundStyle(MetricSeverity.utilization(snapshot.gpu.utilizationPercent).color)
+            }
+            .font(.system(size: 11, weight: .medium).monospacedDigit())
+        } else {
+            Image(systemName: "gauge.with.dots.needle.33percent")
+        }
+    }
+
+    private func percent(_ value: Double) -> String {
+        String(format: "%.0f%%", value)
     }
 }
 

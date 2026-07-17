@@ -3,6 +3,13 @@ import IOKit
 
 final class GPUCollector {
 
+    /// UserDefaults key for the optional user-set GPU core-count override
+    /// (Settings, #13). A value of 0 (the `integer(forKey:)` default when
+    /// unset) means "no override — use the detected/tier value". Read here on
+    /// the collector's own actor executor so the setting flows in without any
+    /// cross-actor plumbing; `UserDefaults` reads are thread-safe.
+    static let coreCountOverrideKey = "settings.gpuCoreCountOverride"
+
     private lazy var chipName: String = Self.detectChipName()
     private lazy var neuralEngineCores: Int = Self.neuralEngineCoreCount(for: chipName)
 
@@ -45,9 +52,8 @@ final class GPUCollector {
             IOObjectRelease(iterator)
         }
 
-        if gpuCoreCount == 0 {
-            gpuCoreCount = Self.defaultGPUCoreCount(for: chipName)
-        }
+        let override = UserDefaults.standard.integer(forKey: Self.coreCountOverrideKey)
+        gpuCoreCount = Self.resolveCoreCount(reported: gpuCoreCount, override: override, chip: chipName)
 
         return GPUMetrics(
             timestamp: timestamp,
@@ -85,6 +91,18 @@ final class GPUCollector {
         }
 
         return (utilization, coreCount)
+    }
+
+    /// Resolves the GPU core count from three sources, in priority order:
+    /// 1. an explicit user override (Settings #13) when set (> 0) — the user
+    ///    knows their exact hardware, so it wins even over an IOKit reading;
+    /// 2. the value IOKit actually reported (> 0);
+    /// 3. the hardcoded/tier default for the chip (QA #7 fallback).
+    /// A non-positive `override` means "unset" and behavior is unchanged.
+    static func resolveCoreCount(reported: Int, override: Int, chip: String) -> Int {
+        if override > 0 { return override }
+        if reported > 0 { return reported }
+        return defaultGPUCoreCount(for: chip)
     }
 
     private static func detectChipName() -> String {

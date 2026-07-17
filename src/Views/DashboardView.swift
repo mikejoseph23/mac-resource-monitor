@@ -16,7 +16,6 @@ struct DashboardView: View {
     @EnvironmentObject private var metricsManager: MetricsManager
     @EnvironmentObject private var layout: DashboardLayout
     @State private var selectedTab: DashboardTab = .dashboard
-    @State private var showingLayoutPopover = false
     @State private var contentWidth: CGFloat = 900
 
     private let columnCount = 3
@@ -171,18 +170,6 @@ struct DashboardView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 160)
-
-                Button {
-                    showingLayoutPopover.toggle()
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.borderless)
-                .help("Show or hide widgets")
-                .popover(isPresented: $showingLayoutPopover, arrowEdge: .bottom) {
-                    layoutPopover
-                }
             }
 
             // Running indicator
@@ -193,39 +180,6 @@ struct DashboardView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-    }
-
-    // MARK: - Layout popover
-
-    private var layoutPopover: some View {
-        let supportsAS = Architecture.isAppleSilicon
-        let widgets = DashboardWidget.allCases.filter { !$0.requiresAppleSilicon || supportsAS }
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Widgets")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(widgets) { widget in
-                    Toggle(widget.displayName, isOn: Binding(
-                        get: { layout.isVisible(widget) },
-                        set: { layout.setVisible(widget, $0) }
-                    ))
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 12))
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-        }
-        .frame(width: 220)
     }
 
     // MARK: - Dashboard layouts
