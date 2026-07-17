@@ -3,17 +3,26 @@ import Darwin
 
 private let kMaxPathSize: Int32 = 4 * Int32(MAXPATHLEN)
 
+/// Identifies a process across samples. PIDs are recycled by the kernel, so
+/// pairing a PID with its process start time keeps a delta calculation from
+/// diffing a freshly-spawned process against a dead one that happened to
+/// share the same PID.
+private struct ProcessIdentity: Hashable {
+    let pid: Int32
+    let startTimeKey: UInt64
+}
+
 final class ProcessCollector {
 
-    /// Previous sample of per-PID cumulative CPU time (nanoseconds) and wall-clock timestamp
-    private var previousCPUTimes: [Int32: UInt64] = [:]
+    /// Previous sample of per-process cumulative CPU time (nanoseconds), keyed by PID + start time
+    private var previousCPUTimes: [ProcessIdentity: UInt64] = [:]
     private var previousSampleTime: Date?
 
     func collect() -> [ProcessMetrics] {
         let now = Date()
         let elapsed = previousSampleTime.map { now.timeIntervalSince($0) } ?? 0
         let pids = listPIDs()
-        var currentCPUTimes: [Int32: UInt64] = [:]
+        var currentCPUTimes: [ProcessIdentity: UInt64] = [:]
         var rawProcesses: [(pid: Int32, name: String, appName: String, user: String, cpu: Double, mem: UInt64)] = []
 
         for pid in pids {
@@ -31,12 +40,13 @@ final class ProcessCollector {
 
                 let appName = groupName(for: pid, processName: name)
                 let user = processUser(for: pid)
+                let identity = ProcessIdentity(pid: pid, startTimeKey: processStartTimeKey(for: pid))
 
                 let totalTimeNs = taskInfo.pti_total_user + taskInfo.pti_total_system
-                currentCPUTimes[pid] = totalTimeNs
+                currentCPUTimes[identity] = totalTimeNs
 
                 var cpuPercent = 0.0
-                if elapsed > 0, let prevTime = previousCPUTimes[pid] {
+                if elapsed > 0, let prevTime = previousCPUTimes[identity] {
                     let deltaNs = totalTimeNs > prevTime ? totalTimeNs - prevTime : 0
                     let deltaSec = Double(deltaNs) / 1_000_000_000.0
                     cpuPercent = (deltaSec / elapsed) * 100.0
@@ -141,6 +151,16 @@ final class ProcessCollector {
         let result = sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0)
         guard result == 0, size > 0 else { return nil }
         return info
+    }
+
+    /// Process start time as microseconds since epoch, used to disambiguate
+    /// a recycled PID from the process that previously held it. Returns 0
+    /// (never matches a real process) if the lookup fails.
+    private func processStartTimeKey(for pid: Int32) -> UInt64 {
+        var bsdInfo = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsdInfo, size) == size else { return 0 }
+        return UInt64(bsdInfo.pbi_start_tvsec) * 1_000_000 + UInt64(bsdInfo.pbi_start_tvusec)
     }
 
     private func processUser(for pid: Int32) -> String {

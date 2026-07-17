@@ -1,11 +1,15 @@
 import Foundation
 
-final class LMStudioCollector {
+// An actor so `latest` is never written and read from different threads at
+// once: MetricsManager currently reads the return value of `collect()`
+// rather than `latest` directly, but a future off-main-actor caller (see M3)
+// could race a direct read against this write without actor isolation.
+actor LMStudioCollector {
     private let baseURL = URL(string: "http://127.0.0.1:1234")!
     private let session: URLSession
 
-    /// Most recent result, updated asynchronously. Safe to read from main thread
-    /// since MetricsManager reads this after the async collect finishes.
+    /// Most recent result, updated by `collect()`. Actor-isolated — callers
+    /// read it via `await collector.latest` from any thread.
     private(set) var latest: LMStudioMetrics = .offline
 
     init() {

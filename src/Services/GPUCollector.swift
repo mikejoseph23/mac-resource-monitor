@@ -18,14 +18,21 @@ final class GPUCollector {
         let result = IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator)
 
         if result == KERN_SUCCESS {
+            // Multiple IOAccelerator entries can be enumerated (e.g. a Mac with
+            // more than one GPU). Take the first entry that actually reports
+            // PerformanceStatistics as the primary accelerator instead of
+            // letting whichever node enumerates last silently win.
             var service = IOIteratorNext(iterator)
+            var foundPrimaryAccelerator = false
             while service != 0 {
-                var properties: Unmanaged<CFMutableDictionary>?
-                if IORegistryEntryCreateCFProperties(service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-                   let dict = properties?.takeRetainedValue() as? [String: Any] {
+                if !foundPrimaryAccelerator {
+                    var properties: Unmanaged<CFMutableDictionary>?
+                    if IORegistryEntryCreateCFProperties(service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+                       let dict = properties?.takeRetainedValue() as? [String: Any],
+                       let perfStats = dict["PerformanceStatistics"] as? [String: Any] {
 
-                    // "PerformanceStatistics" contains GPU utilization data
-                    if let perfStats = dict["PerformanceStatistics"] as? [String: Any] {
+                        foundPrimaryAccelerator = true
+
                         // Different keys depending on GPU generation
                         if let gpuUtil = perfStats["GPU Activity(%)"] as? NSNumber {
                             utilization = gpuUtil.doubleValue
@@ -35,14 +42,13 @@ final class GPUCollector {
                             utilization = gpuActivity.doubleValue
                         }
 
-                        if let cores = perfStats["GPU Core Count"] as? Int {
-                            gpuCoreCount = cores
+                        // IORegistry integer properties bridge to Swift as
+                        // NSNumber, not Int — `as? Int` silently fails here.
+                        if let cores = perfStats["GPU Core Count"] as? NSNumber {
+                            gpuCoreCount = cores.intValue
+                        } else if let cores = dict["gpu-core-count"] as? NSNumber {
+                            gpuCoreCount = cores.intValue
                         }
-                    }
-
-                    // Fallback: try to get core count from top-level properties
-                    if gpuCoreCount == 0, let cores = dict["gpu-core-count"] as? Int {
-                        gpuCoreCount = cores
                     }
                 }
 
@@ -84,8 +90,10 @@ final class GPUCollector {
     }
 
     private static func defaultGPUCoreCount(for chip: String) -> Int {
-        // Rough fallbacks when IOKit doesn't report a core count. Not
-        // exhaustive — users can see 0 here if detection fails entirely.
+        // Hardcoded per-chip core counts for when IOKit doesn't report one.
+        // Kept in sync manually as new chips ship; unlisted chips (e.g. a
+        // future M5 family) fall through to the tier-based estimate below
+        // rather than a hard 0.
         let lower = chip.lowercased()
         if lower.contains("m3 ultra") { return 80 }
         if lower.contains("m2 ultra") { return 76 }
@@ -98,6 +106,17 @@ final class GPUCollector {
         if lower.contains("m3 pro")   { return 18 }
         if lower.contains("m2 pro")   { return 19 }
         if lower.contains("m1 pro")   { return 16 }
-        return 0
+        if lower.contains("m4")       { return 10 }
+        if lower.contains("m3")       { return 10 }
+        if lower.contains("m2")       { return 10 }
+        if lower.contains("m1")       { return 8 }
+
+        // Unlisted/future chip: estimate from the variant suffix using the
+        // most recent known tier sizes so gauges show a plausible non-zero
+        // value instead of reading 0.
+        if lower.contains("ultra") { return 80 }
+        if lower.contains("max")   { return 40 }
+        if lower.contains("pro")   { return 20 }
+        return 10
     }
 }

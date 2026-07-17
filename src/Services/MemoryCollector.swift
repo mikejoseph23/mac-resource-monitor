@@ -49,7 +49,9 @@ final class MemoryCollector {
         let compressedBytes = UInt64(vmStats.compressor_page_count) * pageSize
         // Match Activity Monitor's "Memory Used" = App Memory + Wired + Compressed
         let usedBytes = activeBytes + wiredBytes + compressedBytes
-        let freeBytes = totalBytes - usedBytes
+        // Guard against underflow: a transient over-sum across the VM
+        // counters would otherwise wrap to a multi-exabyte "free" value.
+        let freeBytes = totalBytes > usedBytes ? totalBytes - usedBytes : 0
 
         // Cached Files: inactive pages that can be purged/reused
         let cachedBytes = UInt64(vmStats.inactive_count) * pageSize
