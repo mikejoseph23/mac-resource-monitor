@@ -86,34 +86,35 @@ final class NetworkCollector {
         var totalOut: UInt64 = 0
         var totalPacketsIn: UInt64 = 0
         var totalPacketsOut: UInt64 = 0
-        var offset = 0
 
-        while offset < len {
-            // Each record starts with an if_msghdr2 (or rt_msghdr variant).
-            // We read the common header to get ifm_msglen and ifm_type.
-            let msgHdrPtr = buf.withUnsafeBufferPointer { bufPtr -> UnsafeRawPointer in
-                return UnsafeRawPointer(bufPtr.baseAddress! + offset)
-            }
+        // Do ALL reads inside the closure — a raw pointer must not escape
+        // withUnsafeBytes (its buffer is only valid for the closure's lifetime).
+        // The sysctl buffer offers no 8-byte alignment guarantee, so every
+        // struct read uses loadUnaligned(fromByteOffset:as:).
+        buf.withUnsafeBytes { rawBuf in
+            var offset = 0
+            while offset + MemoryLayout<UInt16>.size <= len {
+                // Each record starts with an if_msghdr2 (or rt_msghdr variant).
+                let msgLen = Int(rawBuf.loadUnaligned(fromByteOffset: offset, as: UInt16.self)) // ifm_msglen
+                guard msgLen > 0, offset + msgLen <= len else { break }
 
-            let msgLen = Int(msgHdrPtr.load(fromByteOffset: 0, as: UInt16.self)) // ifm_msglen
-            guard msgLen > 0 else { break }
+                // ifm_type is at byte offset 3 (after ifm_msglen:u16, ifm_version:u8)
+                let msgType = rawBuf.loadUnaligned(fromByteOffset: offset + 3, as: UInt8.self)
 
-            // ifm_type is at byte offset 3 in if_msghdr2 (after ifm_msglen:u16, ifm_version:u8)
-            let msgType = msgHdrPtr.load(fromByteOffset: 3, as: UInt8.self)
+                if msgType == RTM_IFINFO2, offset + MemoryLayout<if_msghdr2>.size <= len {
+                    let ifm2 = rawBuf.loadUnaligned(fromByteOffset: offset, as: if_msghdr2.self)
 
-            if msgType == RTM_IFINFO2 {
-                let ifm2 = msgHdrPtr.load(as: if_msghdr2.self)
-
-                // Skip loopback (IFF_LOOPBACK = 0x8)
-                if UInt32(bitPattern: ifm2.ifm_flags) & UInt32(IFF_LOOPBACK) == 0 {
-                    totalIn += ifm2.ifm_data.ifi_ibytes
-                    totalOut += ifm2.ifm_data.ifi_obytes
-                    totalPacketsIn += UInt64(ifm2.ifm_data.ifi_ipackets)
-                    totalPacketsOut += UInt64(ifm2.ifm_data.ifi_opackets)
+                    // Skip loopback (IFF_LOOPBACK = 0x8)
+                    if UInt32(bitPattern: ifm2.ifm_flags) & UInt32(IFF_LOOPBACK) == 0 {
+                        totalIn += ifm2.ifm_data.ifi_ibytes
+                        totalOut += ifm2.ifm_data.ifi_obytes
+                        totalPacketsIn += UInt64(ifm2.ifm_data.ifi_ipackets)
+                        totalPacketsOut += UInt64(ifm2.ifm_data.ifi_opackets)
+                    }
                 }
-            }
 
-            offset += msgLen
+                offset += msgLen
+            }
         }
 
         return NetworkStats(bytesIn: totalIn, bytesOut: totalOut, packetsIn: totalPacketsIn, packetsOut: totalPacketsOut)

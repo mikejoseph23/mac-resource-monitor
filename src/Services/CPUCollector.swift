@@ -4,6 +4,10 @@ import Darwin
 final class CPUCollector {
     private var previousTicks: [UInt64]? // [user, system, idle, nice] per core flattened
 
+    // Cache the host port once. mach_host_self() returns a send right that
+    // would otherwise leak (ref count grows unbounded) if fetched every tick.
+    private let hostPort = mach_host_self()
+
     func collect() -> CPUMetrics {
         let timestamp = Date()
         var numCPUsU: natural_t = 0
@@ -11,7 +15,7 @@ final class CPUCollector {
         var cpuInfoCount: mach_msg_type_number_t = 0
 
         let result = host_processor_info(
-            mach_host_self(),
+            hostPort,
             PROCESSOR_CPU_LOAD_INFO,
             &numCPUsU,
             &cpuInfo,
@@ -36,10 +40,13 @@ final class CPUCollector {
         for core in 0..<numCPUs {
             let base = core * stateCount
             let infoBase = Int32(core) * CPU_STATE_MAX
-            currentTicks[base + 0] = UInt64(info[Int(infoBase + CPU_STATE_USER)])
-            currentTicks[base + 1] = UInt64(info[Int(infoBase + CPU_STATE_SYSTEM)])
-            currentTicks[base + 2] = UInt64(info[Int(infoBase + CPU_STATE_IDLE)])
-            currentTicks[base + 3] = UInt64(info[Int(infoBase + CPU_STATE_NICE)])
+            // CPU tick counters are unsigned but exposed as Int32; once a
+            // per-core counter passes 2³¹ a plain UInt64() cast on a negative
+            // Int32 traps. Reinterpret the bit pattern as UInt32 first.
+            currentTicks[base + 0] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_USER)]))
+            currentTicks[base + 1] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_SYSTEM)]))
+            currentTicks[base + 2] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_IDLE)]))
+            currentTicks[base + 3] = UInt64(UInt32(bitPattern: info[Int(infoBase + CPU_STATE_NICE)]))
         }
 
         // Deallocate the processor info
@@ -55,10 +62,13 @@ final class CPUCollector {
         if let prev = previousTicks, prev.count == currentTicks.count {
             for core in 0..<numCPUs {
                 let base = core * stateCount
-                let dUser = currentTicks[base + 0] - prev[base + 0]
-                let dSystem = currentTicks[base + 1] - prev[base + 1]
-                let dIdle = currentTicks[base + 2] - prev[base + 2]
-                let dNice = currentTicks[base + 3] - prev[base + 3]
+                // Guard against 32-bit counter wrap: an unguarded UInt64
+                // subtraction where current < previous underflows into a huge
+                // garbage spike. Zero the delta on wrap (mirrors Disk/Network).
+                let dUser = currentTicks[base + 0] >= prev[base + 0] ? currentTicks[base + 0] - prev[base + 0] : 0
+                let dSystem = currentTicks[base + 1] >= prev[base + 1] ? currentTicks[base + 1] - prev[base + 1] : 0
+                let dIdle = currentTicks[base + 2] >= prev[base + 2] ? currentTicks[base + 2] - prev[base + 2] : 0
+                let dNice = currentTicks[base + 3] >= prev[base + 3] ? currentTicks[base + 3] - prev[base + 3] : 0
                 let total = dUser + dSystem + dIdle + dNice
 
                 totalUser += dUser + dNice

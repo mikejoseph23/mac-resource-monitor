@@ -3,6 +3,10 @@ import Darwin
 
 final class MemoryCollector {
 
+    // Cache the host port once. mach_host_self() returns a send right that
+    // would otherwise leak (ref count grows unbounded) if fetched every tick.
+    private let hostPort = mach_host_self()
+
     func collect() -> MemoryMetrics {
         let timestamp = Date()
         let pageSize = UInt64(vm_kernel_page_size)
@@ -21,7 +25,7 @@ final class MemoryCollector {
         let result = withUnsafeMutablePointer(to: &vmStats) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
                 host_statistics64(
-                    mach_host_self(),
+                    hostPort,
                     HOST_VM_INFO64,
                     intPtr,
                     &count
