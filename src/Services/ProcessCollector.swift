@@ -7,7 +7,7 @@ private let kMaxPathSize: Int32 = 4 * Int32(MAXPATHLEN)
 /// pairing a PID with its process start time keeps a delta calculation from
 /// diffing a freshly-spawned process against a dead one that happened to
 /// share the same PID.
-private struct ProcessIdentity: Hashable {
+struct ProcessIdentity: Hashable {
     let pid: Int32
     let startTimeKey: UInt64
 }

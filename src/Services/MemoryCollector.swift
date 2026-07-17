@@ -51,7 +51,7 @@ final class MemoryCollector {
         let usedBytes = activeBytes + wiredBytes + compressedBytes
         // Guard against underflow: a transient over-sum across the VM
         // counters would otherwise wrap to a multi-exabyte "free" value.
-        let freeBytes = totalBytes > usedBytes ? totalBytes - usedBytes : 0
+        let freeBytes = Self.clampedFreeBytes(totalBytes: totalBytes, usedBytes: usedBytes)
 
         // Cached Files: inactive pages that can be purged/reused
         let cachedBytes = UInt64(vmStats.inactive_count) * pageSize
@@ -87,6 +87,12 @@ final class MemoryCollector {
             appMemoryBytes: appMemoryBytes,
             pressureLevel: pressure
         )
+    }
+
+    /// Clamp free bytes to zero instead of underflowing when a transient
+    /// over-sum across the VM counters puts usedBytes above totalBytes.
+    static func clampedFreeBytes(totalBytes: UInt64, usedBytes: UInt64) -> UInt64 {
+        totalBytes > usedBytes ? totalBytes - usedBytes : 0
     }
 
     /// Read swap usage via sysctl vm.swapusage (xsw_usage struct).

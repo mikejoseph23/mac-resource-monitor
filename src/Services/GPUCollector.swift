@@ -33,22 +33,9 @@ final class GPUCollector {
 
                         foundPrimaryAccelerator = true
 
-                        // Different keys depending on GPU generation
-                        if let gpuUtil = perfStats["GPU Activity(%)"] as? NSNumber {
-                            utilization = gpuUtil.doubleValue
-                        } else if let deviceUtil = perfStats["Device Utilization %"] as? NSNumber {
-                            utilization = deviceUtil.doubleValue
-                        } else if let gpuActivity = perfStats["gpuActivity"] as? NSNumber {
-                            utilization = gpuActivity.doubleValue
-                        }
-
-                        // IORegistry integer properties bridge to Swift as
-                        // NSNumber, not Int — `as? Int` silently fails here.
-                        if let cores = perfStats["GPU Core Count"] as? NSNumber {
-                            gpuCoreCount = cores.intValue
-                        } else if let cores = dict["gpu-core-count"] as? NSNumber {
-                            gpuCoreCount = cores.intValue
-                        }
+                        let parsed = Self.parseAcceleratorStats(perfStats: perfStats, topLevelDict: dict)
+                        utilization = parsed.utilization
+                        gpuCoreCount = parsed.coreCount
                     }
                 }
 
@@ -70,6 +57,34 @@ final class GPUCollector {
             chipName: chipName,
             neuralEngineCoreCount: neuralEngineCores
         )
+    }
+
+    /// Parses IOAccelerator's PerformanceStatistics dict for utilization and
+    /// core count. IORegistry integer properties bridge to Swift as NSNumber,
+    /// not Int — `as? Int` silently fails, so we must go through NSNumber.
+    static func parseAcceleratorStats(
+        perfStats: [String: Any],
+        topLevelDict: [String: Any]
+    ) -> (utilization: Double, coreCount: Int) {
+        var utilization = 0.0
+        var coreCount = 0
+
+        // Different keys depending on GPU generation
+        if let gpuUtil = perfStats["GPU Activity(%)"] as? NSNumber {
+            utilization = gpuUtil.doubleValue
+        } else if let deviceUtil = perfStats["Device Utilization %"] as? NSNumber {
+            utilization = deviceUtil.doubleValue
+        } else if let gpuActivity = perfStats["gpuActivity"] as? NSNumber {
+            utilization = gpuActivity.doubleValue
+        }
+
+        if let cores = perfStats["GPU Core Count"] as? NSNumber {
+            coreCount = cores.intValue
+        } else if let cores = topLevelDict["gpu-core-count"] as? NSNumber {
+            coreCount = cores.intValue
+        }
+
+        return (utilization, coreCount)
     }
 
     private static func detectChipName() -> String {
