@@ -1,4 +1,44 @@
 import SwiftUI
+import Darwin
+
+/// Pure, testable free-text filter for the process list. Matches a row on its
+/// display name (case-insensitive substring) or its PID (substring of the PID
+/// string). Groups survive if the group name matches OR any child matches; a
+/// child-only match narrows the group to just the matching children (with the
+/// CPU/memory aggregates recomputed). An empty/whitespace query is a no-op and
+/// returns the input unchanged.
+enum ProcessSearchFilter {
+    static func apply(_ processes: [ProcessMetrics], query: String) -> [ProcessMetrics] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return processes }
+        let needle = trimmed.lowercased()
+
+        func matches(_ p: ProcessMetrics) -> Bool {
+            p.name.lowercased().contains(needle) || String(p.pid).contains(needle)
+        }
+
+        return processes.compactMap { proc -> ProcessMetrics? in
+            guard proc.isGroup else {
+                return matches(proc) ? proc : nil
+            }
+            if matches(proc) { return proc }
+            let hits = proc.children.filter(matches)
+            guard !hits.isEmpty else { return nil }
+            let cpu = hits.reduce(0.0) { $0 + $1.cpuUsage }
+            let mem = hits.reduce(UInt64(0)) { $0 + $1.memoryBytes }
+            return ProcessMetrics(
+                pid: proc.pid,
+                name: proc.name,
+                user: proc.user,
+                bundleIdentifier: proc.bundleIdentifier,
+                cpuUsage: cpu,
+                memoryBytes: mem,
+                isGroup: true,
+                children: hits
+            )
+        }
+    }
+}
 
 enum ProcessGrouping: String, CaseIterable {
     case application = "Application"
@@ -27,8 +67,19 @@ struct ProcessListView: View {
     @State private var sortDirection: SortDirection = .descending
     @State private var showAll = false
     @State private var bypassFilter = false
+    @State private var searchQuery = ""
+    @State private var pendingForceQuit: KillTarget? = nil
+    @State private var signalError: String? = nil
 
     private let defaultVisibleCount = 25
+
+    /// A pending Force Quit awaiting confirmation. `pids` is every process the
+    /// selected row represents (a leaf = one PID; a group = all its children).
+    private struct KillTarget: Identifiable {
+        var id: String { label }
+        let label: String
+        let pids: [Int32]
+    }
 
     private var activeFilter: [String]? {
         bypassFilter ? nil : nameFilter
@@ -72,7 +123,7 @@ struct ProcessListView: View {
     }
 
     private var displayedProcesses: [ProcessMetrics] {
-        let source = filteredProcesses
+        let source = ProcessSearchFilter.apply(filteredProcesses, query: searchQuery)
         let grouped: [ProcessMetrics]
         switch grouping {
         case .application:
@@ -302,6 +353,78 @@ struct ProcessListView: View {
         return sortDirection == .ascending ? " \u{25B2}" : " \u{25BC}"
     }
 
+    // MARK: - Search field
+
+    @ViewBuilder
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            TextField("Filter by name or PID", text: $searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+    }
+
+    // MARK: - Kill / Quit
+
+    /// Every live PID a row stands for: a leaf is itself; a group is all of its
+    /// children (the group's own `pid` is one of the children, so children
+    /// alone is the complete, non-duplicated set).
+    private func targetPIDs(for process: ProcessMetrics) -> [Int32] {
+        let pids = process.isGroup ? process.children.map(\.pid) : [process.pid]
+        return pids.filter { $0 > 0 }
+    }
+
+    private func scopeLabel(for process: ProcessMetrics) -> String {
+        process.isGroup
+            ? "\(process.name) (\(process.children.count) processes)"
+            : process.name
+    }
+
+    /// Signals every PID; a non-zero `kill()` return (e.g. EPERM on a process
+    /// we don't own, ESRCH if it already exited) is collected and surfaced as a
+    /// non-fatal alert rather than crashing or failing silently.
+    private func sendSignal(_ sig: Int32, to pids: [Int32], label: String) {
+        var failures = 0
+        for pid in pids where kill(pid, sig) != 0 {
+            failures += 1
+        }
+        if failures > 0 {
+            let verb = sig == SIGKILL ? "force quit" : "quit"
+            let noun = failures == 1 ? "process" : "\(failures) processes"
+            signalError = "Couldn't \(verb) \(label). \(failures == 1 ? "The process" : noun) could not be signaled — you may not have permission to control it."
+        }
+    }
+
+    @ViewBuilder
+    private func processContextMenu(for process: ProcessMetrics) -> some View {
+        let pids = targetPIDs(for: process)
+        let scope = scopeLabel(for: process)
+        Button("Quit \(scope)") {
+            sendSignal(SIGTERM, to: pids, label: scope)
+        }
+        .disabled(pids.isEmpty)
+        Button("Force Quit \(scope)…", role: .destructive) {
+            pendingForceQuit = KillTarget(label: scope, pids: pids)
+        }
+        .disabled(pids.isEmpty)
+    }
+
     // MARK: - Build flat row list (avoids DisclosureGroup perf issues)
 
     private struct FlatRow: Identifiable {
@@ -366,6 +489,9 @@ struct ProcessListView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
 
+            Divider()
+            searchField
+
             if nameFilter != nil {
                 Divider()
                 filterBanner
@@ -410,6 +536,7 @@ struct ProcessListView: View {
                                     expandedGroups.insert(row.process.name)
                                 }
                             }
+                            .contextMenu { processContextMenu(for: row.process) }
                         } else {
                             ProcessRowContent(
                                 process: row.process,
@@ -420,6 +547,8 @@ struct ProcessListView: View {
                             )
                             .padding(.horizontal, 14)
                             .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                            .contextMenu { processContextMenu(for: row.process) }
                         }
 
                         Divider()
@@ -448,6 +577,34 @@ struct ProcessListView: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                 )
+        }
+        .confirmationDialog(
+            pendingForceQuit.map { "Force quit \($0.label)?" } ?? "",
+            isPresented: Binding(
+                get: { pendingForceQuit != nil },
+                set: { if !$0 { pendingForceQuit = nil } }
+            ),
+            presenting: pendingForceQuit
+        ) { target in
+            Button("Force Quit", role: .destructive) {
+                sendSignal(SIGKILL, to: target.pids, label: target.label)
+                pendingForceQuit = nil
+            }
+            Button("Cancel", role: .cancel) { pendingForceQuit = nil }
+        } message: { target in
+            let n = target.pids.count
+            Text("This sends SIGKILL to \(n == 1 ? "the process" : "\(n) processes"). Unsaved work will be lost.")
+        }
+        .alert(
+            "Couldn't Signal Process",
+            isPresented: Binding(
+                get: { signalError != nil },
+                set: { if !$0 { signalError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { signalError = nil }
+        } message: {
+            Text(signalError ?? "")
         }
     }
 
