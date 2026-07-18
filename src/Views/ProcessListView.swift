@@ -40,6 +40,26 @@ enum ProcessSearchFilter {
     }
 }
 
+/// Pure, testable logic for the kill/quit context menu: which PIDs a row
+/// stands for, and the human-readable scope label shown in "Quit …" /
+/// "Force Quit …" menu items.
+enum ProcessKillTarget {
+    /// Every live PID a row stands for: a leaf is itself; a group is all of
+    /// its children (the group's own `pid` is one of the children, so
+    /// children alone is the complete, non-duplicated set). PID 0 is
+    /// filtered out defensively.
+    static func pids(for process: ProcessMetrics) -> [Int32] {
+        let pids = process.isGroup ? process.children.map(\.pid) : [process.pid]
+        return pids.filter { $0 > 0 }
+    }
+
+    static func scopeLabel(for process: ProcessMetrics) -> String {
+        process.isGroup
+            ? "\(process.name) (\(process.children.count) processes)"
+            : process.name
+    }
+}
+
 enum ProcessGrouping: String, CaseIterable {
     case application = "Application"
     case user = "User"
@@ -382,18 +402,12 @@ struct ProcessListView: View {
 
     // MARK: - Kill / Quit
 
-    /// Every live PID a row stands for: a leaf is itself; a group is all of its
-    /// children (the group's own `pid` is one of the children, so children
-    /// alone is the complete, non-duplicated set).
     private func targetPIDs(for process: ProcessMetrics) -> [Int32] {
-        let pids = process.isGroup ? process.children.map(\.pid) : [process.pid]
-        return pids.filter { $0 > 0 }
+        ProcessKillTarget.pids(for: process)
     }
 
     private func scopeLabel(for process: ProcessMetrics) -> String {
-        process.isGroup
-            ? "\(process.name) (\(process.children.count) processes)"
-            : process.name
+        ProcessKillTarget.scopeLabel(for: process)
     }
 
     /// Signals every PID; a non-zero `kill()` return (e.g. EPERM on a process

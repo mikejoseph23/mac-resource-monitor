@@ -8,7 +8,7 @@ import SwiftUI
 /// Before this existed each surface rolled its own thresholds and palette
 /// (menu bar green/yellow/red at 50/80, cards green/orange/red at 70/90,
 /// process rows 40/80, disk 80/95). Route everything through here instead.
-enum MetricSeverity {
+enum MetricSeverity: Equatable {
     case normal
     case warning
     case critical
