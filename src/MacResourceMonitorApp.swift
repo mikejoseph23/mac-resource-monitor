@@ -16,7 +16,7 @@ struct MacResourceMonitorApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Mac Resource Monitor") {
-                    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0"
+                    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.2.0"
                     NSApplication.shared.orderFrontStandardAboutPanel(options: [
                         NSApplication.AboutPanelOptionKey.applicationName: "Mac Resource Monitor",
                         NSApplication.AboutPanelOptionKey.applicationVersion: version,
