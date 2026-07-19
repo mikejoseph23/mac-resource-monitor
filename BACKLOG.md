@@ -17,7 +17,14 @@ The existing `DashboardLayout` ObservableObject is the right place to grow this 
 add `order: [DashboardWidget]` and `span: [DashboardWidget: Int]` (1–3) properties,
 keep them codable for round-tripping via JSON in UserDefaults.
 
-## Sparkle-based auto-update
+## Sparkle-based auto-update — DONE (2026-07-19)
+
+Shipped: Sparkle 2.x embedded via SPM, updater wired in `src/Services/UpdaterModel.swift`
+("Check for Updates…" menu item + Settings toggle), feed at
+`https://iadev.net/mac-resource-monitor/appcast.xml` (`deploy/updates/appcast.xml`),
+`make-dmg.sh` embeds + inside-out-signs the framework, `scripts/stage-release.sh`
+EdDSA-signs the DMG and refreshes the appcast. See CLAUDE.md "Auto-update (Sparkle)
+& Release". Original notes below for reference.
 
 Add in-app auto-update via [Sparkle](https://sparkle-project.org/) so shipped builds can
 update themselves instead of users manually re-downloading the DMG from GitHub Releases.

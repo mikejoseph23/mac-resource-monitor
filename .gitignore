@@ -17,5 +17,12 @@ xcuserdata/
 *.app/
 *.zip
 
+# Release staging scratch (versioned DMGs are kept; these are throwaway)
+dist/upload/
+dist/.dmg-scratch/
+dist/.rw.dmg
+dist/Mac Resource Monitor.dmg
+
 # Claude
 .claude/settings.local.json
+.orchestrator/

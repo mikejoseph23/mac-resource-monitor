@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build a release .app bundle and pack it into a polished drag-to-Applications
-# DMG.
+# Build a release .app bundle (with embedded Sparkle auto-updater) and pack it
+# into a polished drag-to-Applications DMG modelled on the LymeScribe installer.
 #
 # Signing modes:
-#   default      ad-hoc signed (Gatekeeper will warn on download)
+#   default      ad-hoc signed (Gatekeeper will warn on download; fine for local)
 #   SIGN_ID=...  sign with the given codesign identity (e.g. "Developer ID
 #                Application: NAME (TEAMID)"). Adds hardened runtime + secure
 #                timestamp so the artifact is notarization-ready.
@@ -11,6 +11,11 @@
 #                service using the named keychain credential profile (created
 #                via `xcrun notarytool store-credentials <name>`), waits for
 #                approval, and staples the ticket. Requires SIGN_ID.
+#
+# Sparkle: Sparkle.framework is embedded in Contents/Frameworks and signed
+# inside-out (XPC services → Autoupdate → Updater.app → framework → app) before
+# the app itself, as Sparkle requires. After building the notarized DMG, run
+# scripts/stage-release.sh to EdDSA-sign it and refresh the appcast.
 #
 # Output: dist/Mac Resource Monitor.app, dist/Mac Resource Monitor.dmg,
 #         dist/Mac Resource Monitor.zip
@@ -20,7 +25,6 @@ cd "$(dirname "$0")/.."
 
 APP_NAME="Mac Resource Monitor"
 BIN_NAME="MacResourceMonitor"
-BUNDLE_ID="com.mikejoseph.mac-resource-monitor"
 VOL_NAME="$APP_NAME"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"
@@ -29,11 +33,31 @@ ZIP="$DIST/$APP_NAME.zip"
 SCRATCH="$DIST/.dmg-scratch"
 RW_DMG="$DIST/.rw.dmg"
 ENTITLEMENTS="src/MacResourceMonitor.entitlements"
+SRC_PLIST="src/Info.plist"
 
 SIGN_ID="${SIGN_ID:-}"
 NOTARIZE_PROFILE="${NOTARIZE_PROFILE:-}"
 
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' src/Info.plist 2>/dev/null || echo 0.1.0)"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SRC_PLIST")"
+
+# Codesign identity + hardening flags. Ad-hoc ("-") for local runs; a real
+# Developer ID adds hardened runtime + a secure timestamp (needed to notarize).
+if [ -n "$SIGN_ID" ]; then
+    IDENT="$SIGN_ID"
+    HARDEN=(--options runtime --timestamp)
+else
+    IDENT="-"
+    HARDEN=()
+fi
+
+# Locate the Sparkle.framework that SwiftPM downloaded (the xcframework slice
+# with the real binary + XPC services + Updater.app).
+SPARKLE_FW="$(find .build/artifacts -type d -path '*Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' 2>/dev/null | head -1)"
+if [ -z "$SPARKLE_FW" ]; then
+    echo "!! Sparkle.framework not found under .build/artifacts — run 'swift build' first" >&2
+    exit 1
+fi
+FW_VER="$(readlink "$SPARKLE_FW/Versions/Current")"   # e.g. "B"
 
 echo "==> Cleaning $DIST"
 rm -rf "$APP" "$DMG" "$ZIP" "$SCRATCH" "$RW_DMG"
@@ -42,88 +66,76 @@ mkdir -p "$DIST"
 echo "==> swift build -c release"
 swift build -c release >/dev/null
 
-echo "==> Assembling .app bundle"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+echo "==> Assembling .app bundle (v$VERSION)"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp ".build/arm64-apple-macosx/release/$BIN_NAME" "$APP/Contents/MacOS/$BIN_NAME"
 cp src/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# src/Info.plist is the single source of truth (version, Sparkle SU* keys,
+# CFBundleExecutable/IconFile) — copy it rather than regenerating inline.
+cp "$SRC_PLIST" "$APP/Contents/Info.plist"
 
-cat > "$APP/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleDisplayName</key>
-	<string>$APP_NAME</string>
-	<key>CFBundleExecutable</key>
-	<string>$BIN_NAME</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>CFBundleIdentifier</key>
-	<string>$BUNDLE_ID</string>
-	<key>CFBundleName</key>
-	<string>$APP_NAME</string>
-	<key>CFBundleShortVersionString</key>
-	<string>$VERSION</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.utilities</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
-</dict>
-</plist>
-PLIST
+echo "==> Embedding Sparkle.framework"
+cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
+# The SwiftPM-built binary references @rpath/Sparkle.framework but only has an
+# @loader_path rpath; add the Frameworks dir so it resolves inside the bundle.
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/$BIN_NAME" 2>/dev/null || true
 
-if [ -n "$SIGN_ID" ]; then
-    echo "==> Signing .app with $SIGN_ID"
-    codesign --force --deep --options runtime --timestamp \
-        --entitlements "$ENTITLEMENTS" \
-        --sign "$SIGN_ID" "$APP"
-else
-    echo "==> Ad-hoc signing .app"
-    codesign --force --deep --sign - "$APP" >/dev/null
-fi
-codesign --verify --deep --strict "$APP"
+echo "==> Signing Sparkle components inside-out (identity: $IDENT)"
+FWV="$APP/Contents/Frameworks/Sparkle.framework/Versions/$FW_VER"
+# XPC services first — preserve their shipped entitlements (Downloader.xpc is
+# sandboxed; Installer.xpc is not).
+codesign --force ${HARDEN[@]+"${HARDEN[@]}"} --preserve-metadata=entitlements --sign "$IDENT" "$FWV/XPCServices/Downloader.xpc"
+codesign --force ${HARDEN[@]+"${HARDEN[@]}"} --preserve-metadata=entitlements --sign "$IDENT" "$FWV/XPCServices/Installer.xpc"
+codesign --force ${HARDEN[@]+"${HARDEN[@]}"} --sign "$IDENT" "$FWV/Autoupdate"
+codesign --force ${HARDEN[@]+"${HARDEN[@]}"} --sign "$IDENT" "$FWV/Updater.app"
+codesign --force ${HARDEN[@]+"${HARDEN[@]}"} --sign "$IDENT" "$APP/Contents/Frameworks/Sparkle.framework"
+
+echo "==> Signing .app (identity: $IDENT)"
+# No --deep: nested Sparkle code is already signed above; --deep would clobber
+# the XPC entitlements. Sign the app bundle last (outside-in completion).
+codesign --force ${HARDEN[@]+"${HARDEN[@]}"} --entitlements "$ENTITLEMENTS" --sign "$IDENT" "$APP"
+codesign --verify --strict "$APP"
 
 echo "==> Building zip"
 (cd "$DIST" && ditto -c -k --keepParent "$APP_NAME.app" "$APP_NAME.zip")
 
 echo "==> Building DMG"
-mkdir -p "$SCRATCH"
+mkdir -p "$SCRATCH/.background"
 cp -R "$APP" "$SCRATCH/"
 ln -s /Applications "$SCRATCH/Applications"
 
-# Generate background image with the drag-to-install arrow and hide it
-# inside .background/ so it never shows up in the DMG window.
-mkdir -p "$SCRATCH/.background"
-swift scripts/draw-dmg-background.swift "$SCRATCH/.background/background.png"
+# Brand background: generate 1x + @2x art and fuse into a HiDPI TIFF so Finder
+# renders it at the correct point size on Retina (a bare 1200x800 PNG would be
+# misread as 1200x800 pt).
+swift scripts/draw-dmg-background.swift "$SCRATCH/.background"
+tiffutil -cathidpicheck \
+    "$SCRATCH/.background/background.png" \
+    "$SCRATCH/.background/background@2x.png" \
+    -out "$SCRATCH/.background/background.tiff" >/dev/null
+rm -f "$SCRATCH/.background/background.png" "$SCRATCH/.background/background@2x.png"
 
-# Create a writable DMG, mount it, set view options via Finder, then convert
-# to a compressed read-only DMG. The intermediate RW image lets us persist
-# .DS_Store with our icon positions and view settings.
+# Window + icon layout (points). Must agree with draw-dmg-background.swift.
+WIN_LEFT=200; WIN_TOP=120; WIN_W=600; WIN_H=400
+WIN_RIGHT=$(( WIN_LEFT + WIN_W )); WIN_BOTTOM=$(( WIN_TOP + WIN_H ))
+ICON_SIZE=128
+APP_X=150; APP_Y=185
+APPS_X=450; APPS_Y=185
+
+# Create a writable image, mount it, script Finder to persist the layout, then
+# convert to a compressed read-only DMG.
 hdiutil create -volname "$VOL_NAME" -srcfolder "$SCRATCH" -ov \
   -fs HFS+ -format UDRW "$RW_DMG" >/dev/null
 
-# Defensively detach any stale mounts of a previous run before re-attaching,
-# otherwise hdiutil will mount as "$VOL_NAME 1" and the scripted positioning
-# will target the wrong window.
 for stale in "/Volumes/$VOL_NAME" "/Volumes/$VOL_NAME 1" "/Volumes/$VOL_NAME 2"; do
     [ -d "$stale" ] && hdiutil detach "$stale" -force -quiet 2>/dev/null || true
 done
 
-# Mount at the standard /Volumes path so Finder registers the volume and
-# indexes its items — using -mountpoint can suppress this and cause AppleScript
-# position commands to fail with -10006.
 hdiutil attach "$RW_DMG" -readwrite -noverify -noautoopen >/dev/null
 MOUNT="/Volumes/$VOL_NAME"
-
-# Give Finder a moment to mount and index items before scripting it.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     [ -e "$MOUNT/$APP_NAME.app" ] && [ -e "$MOUNT/Applications" ] && break
     sleep 0.5
 done
-
-BG_POSIX="$MOUNT/.background/background.png"
 
 osascript <<APPLESCRIPT
 tell application "Finder"
@@ -136,24 +148,17 @@ tell application "Finder"
             set current view to icon view
             set toolbar visible to false
             set statusbar visible to false
-            set the bounds to {200, 120, 800, 500}
+            set the bounds to {$WIN_LEFT, $WIN_TOP, $WIN_RIGHT, $WIN_BOTTOM}
         end tell
         delay 1
         set theViewOptions to the icon view options of theWindow
-        set icon size of theViewOptions to 160
+        set arrangement of theViewOptions to not arranged
+        set icon size of theViewOptions to $ICON_SIZE
         set text size of theViewOptions to 13
-        set background picture of theViewOptions to POSIX file "$BG_POSIX"
+        set background picture of theViewOptions to file ".background:background.tiff"
         delay 1
-        repeat with anItem in (get items of theWindow)
-            set n to name of anItem
-            try
-                if n ends with ".app" then
-                    set position of anItem to {160, 180}
-                else if n is "Applications" then
-                    set position of anItem to {440, 180}
-                end if
-            end try
-        end repeat
+        set position of item "$APP_NAME.app" of theWindow to {$APP_X, $APP_Y}
+        set position of item "Applications" of theWindow to {$APPS_X, $APPS_Y}
         delay 2
         close theWindow
     end tell
@@ -179,15 +184,10 @@ if [ -n "$NOTARIZE_PROFILE" ]; then
         exit 1
     fi
     echo "==> Submitting DMG to Apple notary (profile: $NOTARIZE_PROFILE)"
-    xcrun notarytool submit "$DMG" \
-        --keychain-profile "$NOTARIZE_PROFILE" \
-        --wait
+    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARIZE_PROFILE" --wait
     echo "==> Stapling notarization ticket to DMG and .app"
     xcrun stapler staple "$DMG"
     xcrun stapler validate "$DMG"
-    # Staple the .app too so users who download the zip get an offline-verifiable
-    # bundle. Without this, Gatekeeper has to fetch the ticket online on first
-    # launch from the unzipped app.
     xcrun stapler staple "$APP"
     echo "==> Rebuilding zip with stapled .app"
     rm -f "$ZIP"

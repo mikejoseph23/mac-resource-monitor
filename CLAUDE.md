@@ -35,6 +35,37 @@ Native SwiftUI macOS app (bundle ID: `com.mikejoseph.mac-resource-monitor`) that
 - `src/` — App source code (SwiftUI, models, services, views)
 - `marketing/` — App Store content and promotional materials
 - `docs/` — Project documentation
+- `deploy/updates/` — Sparkle appcast + IIS `web.config` served from `iadev.net/mac-resource-monitor/`
+- `scripts/` — `make-dmg.sh` (build/sign/notarize DMG), `stage-release.sh` (EdDSA-sign + refresh appcast), `draw-dmg-background.swift`
+
+## Auto-update (Sparkle) & Release
+
+The app self-updates via **Sparkle 2.x** (SPM dependency). `Sparkle.framework` is
+embedded in `Contents/Frameworks` and signed inside-out by `make-dmg.sh`. The
+updater is wired in `src/Services/UpdaterModel.swift` (a "Check for Updates…"
+menu item + an "Automatically check for updates" toggle in General settings).
+
+- **Feed:** `https://iadev.net/mac-resource-monitor/appcast.xml` (`SUFeedURL` in
+  `src/Info.plist`). DMG served from the same folder, versioned filename.
+- **EdDSA key:** `SUPublicEDKey` in `src/Info.plist` pins the public half; the
+  private key lives in the login Keychain (account `ed25519`, shared with
+  LymeScribe — Sparkle uses one key for all your apps). Never in the repo.
+- **`src/Info.plist` is the single source of truth** for version + `SU*` keys;
+  `make-dmg.sh` copies it into the bundle (it no longer generates one inline).
+
+Release steps (needs a notary credential — see `xcrun notarytool store-credentials`):
+
+```bash
+SIGN_ID="Developer ID Application: INTERAPP DEVELOPMENT, INC. (UU626VCLYW)" \
+NOTARIZE_PROFILE="mrm-notary" ./scripts/make-dmg.sh   # build → sign → notarize → staple
+./scripts/stage-release.sh                            # EdDSA-sign DMG + rewrite appcast → dist/upload/
+```
+
+Then upload everything in `dist/upload/` to `iadev.net/mac-resource-monitor/` and
+**purge the Cloudflare cache for `appcast.xml`** (same URL, new content). Bump
+**both** `CFBundleShortVersionString` and `CFBundleVersion` in `src/Info.plist`
+every release (Sparkle compares them) and manually refresh the appcast
+`<description>` release notes.
 
 ### System API Usage
 

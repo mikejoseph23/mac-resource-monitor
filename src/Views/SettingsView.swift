@@ -25,6 +25,7 @@ struct SettingsView: View {
 // MARK: - General
 
 private struct GeneralSettingsView: View {
+    @EnvironmentObject private var updater: UpdaterModel
     @StateObject private var loginItem = LoginItemModel()
 
     /// 0 means "no override" — the collector falls back to the detected / tier
@@ -50,6 +51,18 @@ private struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            Section {
+                Toggle("Automatically check for updates", isOn: Binding(
+                    get: { updater.automaticallyChecksForUpdates },
+                    set: { updater.automaticallyChecksForUpdates = $0 }
+                ))
+                Text("New versions are downloaded and verified via Sparkle from iadev.net.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Updates")
             }
 
             Section {

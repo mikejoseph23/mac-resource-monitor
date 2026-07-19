@@ -4,9 +4,15 @@ import PackageDescription
 let package = Package(
     name: "MacResourceMonitor",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", .upToNextMajor(from: "2.6.0")),
+    ],
     targets: [
         .executableTarget(
             name: "MacResourceMonitor",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "src",
             exclude: ["Info.plist", "MacResourceMonitor.entitlements"],
             resources: [

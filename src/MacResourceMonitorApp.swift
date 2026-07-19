@@ -5,6 +5,7 @@ struct MacResourceMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var metricsManager = MetricsManager()
     @StateObject private var layout = DashboardLayout()
+    @StateObject private var updater = UpdaterModel()
 
     var body: some Scene {
         WindowGroup {
@@ -23,6 +24,14 @@ struct MacResourceMonitorApp: App {
                     ])
                 }
             }
+            // Standard "Check for Updates…" item, placed just under About in
+            // the app menu. Disabled while a check is already running.
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    updater.checkForUpdates()
+                }
+                .disabled(!updater.canCheckForUpdates)
+            }
         }
 
         MenuBarExtra {
@@ -38,6 +47,7 @@ struct MacResourceMonitorApp: App {
         Settings {
             SettingsView()
                 .environmentObject(layout)
+                .environmentObject(updater)
         }
     }
 }

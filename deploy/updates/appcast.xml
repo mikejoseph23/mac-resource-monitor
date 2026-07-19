@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Mac Resource Monitor</title>
+    <link>https://iadev.net/mac-resource-monitor/appcast.xml</link>
+    <description>Mac Resource Monitor update feed</description>
+    <language>en</language>
+    <item>
+      <title>Mac Resource Monitor 1.2.0</title>
+      <description><![CDATA[
+        <ul>
+          <li>Metric collection now runs off the main thread, fixing two crash-class bugs and keeping the UI smooth under load.</li>
+          <li>Unified severity thresholds and colorblind-friendly glyphs across every card.</li>
+          <li>Process list gains a right-click Kill/Quit menu and a live search field.</li>
+          <li>New live menu-bar readout (CPU + GPU) and a standard Settings window.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sat, 19 Jul 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <!-- edSignature + length are filled in by scripts/stage-release.sh at
+           release time (EdDSA-signs the notarized DMG). Never upload with the
+           placeholder below — Sparkle rejects a mismatched signature. -->
+      <enclosure
+        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.2.0.dmg"
+        sparkle:version="2"
+        sparkle:shortVersionString="1.2.0"
+        sparkle:edSignature="PLACEHOLDER_ED_SIGNATURE"
+        length="0"
+        type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>
