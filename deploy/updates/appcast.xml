@@ -15,7 +15,7 @@
           <li>New live menu-bar readout (CPU + GPU) and a standard Settings window.</li>
         </ul>
       ]]></description>
-      <pubDate>Sat, 19 Jul 2026 00:00:00 +0000</pubDate>
+      <pubDate>Sun, 19 Jul 2026 16:53:35 +0000</pubDate>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <!-- edSignature + length are filled in by scripts/stage-release.sh at
            release time (EdDSA-signs the notarized DMG). Never upload with the
@@ -24,8 +24,8 @@
         url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.2.0.dmg"
         sparkle:version="2"
         sparkle:shortVersionString="1.2.0"
-        sparkle:edSignature="PLACEHOLDER_ED_SIGNATURE"
-        length="0"
+        sparkle:edSignature="mTv7h5iaE+VjDpYQxq4xGFvNM0GuV7ZfOF58xMnrf7UV9j8GPbgn2i8uM07pK0Y6xafhPw3eDla+Z1zdgGjvCg=="
+        length="2976467"
         type="application/octet-stream" />
     </item>
   </channel>
