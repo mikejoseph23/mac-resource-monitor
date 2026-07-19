@@ -67,6 +67,12 @@ rm -rf "$UPLOAD"; mkdir -p "$UPLOAD"
 cp "$VERSIONED_DMG" "$UPLOAD/"
 cp "$APPCAST" "$UPLOAD/"
 cp deploy/updates/web.config "$UPLOAD/"
+cp deploy/updates/screenshot.png "$UPLOAD/"
+# Landing page: rewrite the DMG filename + version labels to this release so the
+# download button and version text track the release without a manual edit.
+sed -e "s|MacResourceMonitor-v[0-9][0-9.]*\.dmg|$DMG_NAME|g" \
+    -e "s|v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}|v$VERSION|g" \
+    deploy/updates/index.html > "$UPLOAD/index.html"
 
 echo ""
 echo "Done. Upload EVERYTHING in $UPLOAD/ to iadev.net/mac-resource-monitor/ :"
