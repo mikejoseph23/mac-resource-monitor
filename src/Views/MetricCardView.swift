@@ -101,6 +101,12 @@ struct MetricCardView: View {
                     }
                 }
             }
+
+            // Pins content to the top so that when a row stretches this card to
+            // match a taller row-mate, the extra height becomes bottom padding
+            // rather than distorting the gauge/sparkline/text. Contributes zero
+            // height when the card is only proposed its natural size.
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, emphasized ? 14 : (compact ? 10 : 12))
         .padding(.vertical, emphasized ? 12 : (compact ? 8 : 10))

@@ -226,14 +226,17 @@ struct DashboardView: View {
         let stacked = contentWidth < 720
 
         return VStack(spacing: 10) {
-            // Featured hero cards, spread evenly across the top.
-            equalWidthRow(featured, stacked: stacked) { widget in
+            // Featured hero cards, spread evenly across the top. `fillHeight`
+            // keeps every card in the row the same height as its tallest peer.
+            equalWidthRow(featured, stacked: stacked, fillHeight: true) { widget in
                 card(for: widget, emphasized: true, compact: false)
             }
 
-            // Remaining metrics as a responsive grid of compact cards.
+            // Remaining metrics as a responsive grid of compact cards, each row
+            // height-matched so Frequency/Thermal don't render stubby next to a
+            // taller CPU, and Disk matches Disk I/O and Network.
             ForEach(Array(compactRows.enumerated()), id: \.offset) { _, row in
-                equalWidthRow(row, stacked: stacked) { widget in
+                equalWidthRow(row, stacked: stacked, fillHeight: true) { widget in
                     card(for: widget, emphasized: false, compact: true)
                 }
             }
@@ -246,11 +249,15 @@ struct DashboardView: View {
 
     /// Lays `widgets` out as equal-width columns in a row (stacking vertically
     /// on a narrow window). Each card fills its share of the width via
-    /// `maxWidth: .infinity`, so the row scales with the available space.
+    /// `maxWidth: .infinity`, so the row scales with the available space. When
+    /// `fillHeight` is set, every card also fills the row's height (which the
+    /// HStack sizes to the tallest card), so cards in a row share matching
+    /// top/bottom edges instead of sizing to their own intrinsic content.
     @ViewBuilder
     private func equalWidthRow(
         _ widgets: [DashboardWidget],
         stacked: Bool,
+        fillHeight: Bool = false,
         @ViewBuilder card: @escaping (DashboardWidget) -> some View
     ) -> some View {
         if stacked {
@@ -262,13 +269,18 @@ struct DashboardView: View {
         } else {
             HStack(alignment: .top, spacing: columnSpacing) {
                 ForEach(widgets) { widget in
-                    card(widget).frame(maxWidth: .infinity)
+                    card(widget)
+                        .frame(maxWidth: .infinity,
+                               maxHeight: fillHeight ? .infinity : nil,
+                               alignment: .top)
                 }
                 // Pad a short final row so its cards keep the grid's column
-                // width instead of stretching to fill the leftover space.
+                // width instead of stretching to fill the leftover space. The
+                // spacer also fills height so it doesn't collapse the row.
                 if widgets.count < columnCount {
                     ForEach(0..<(columnCount - widgets.count), id: \.self) { _ in
-                        Color.clear.frame(maxWidth: .infinity)
+                        Color.clear.frame(maxWidth: .infinity,
+                                          maxHeight: fillHeight ? .infinity : nil)
                     }
                 }
             }

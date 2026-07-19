@@ -106,7 +106,10 @@ final class DiskCollector {
     }
 
     private func collectVolumes() -> [VolumeInfo] {
-        let keys: [URLResourceKey] = [.volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
+        let keys: [URLResourceKey] = [
+            .volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey,
+            .volumeIsBrowsableKey, .volumeIsLocalKey,
+        ]
         guard let urls = FileManager.default.mountedVolumeURLs(
             includingResourceValuesForKeys: keys,
             options: [.skipHiddenVolumes]
@@ -114,7 +117,9 @@ final class DiskCollector {
 
         return urls.compactMap { url in
             let path = url.path
-            // Filter out system/internal volumes
+            let isBoot = path == "/"
+
+            // Filter out system/internal pseudo-volumes.
             if Self.excludedPrefixes.contains(where: { path.hasPrefix($0) }) { return nil }
 
             guard let values = try? url.resourceValues(forKeys: Set(keys)),
@@ -123,13 +128,40 @@ final class DiskCollector {
                   let available = values.volumeAvailableCapacity,
                   total > 0 else { return nil }
 
+            // Keep the boot volume unconditionally; otherwise only surface real,
+            // user-relevant drives. This filters out mounted disk images (DMGs —
+            // e.g. launching the app from its own .dmg), read-only images, and
+            // other non-physical mounts that shouldn't read as "storage".
+            if !isBoot {
+                // Must be a local, Finder-browsable volume (drops network
+                // auto-mounts and hidden pseudo-volumes).
+                if values.volumeIsBrowsable == false { return nil }
+                if values.volumeIsLocal == false { return nil }
+                // Read-only or non-browsable at the mount level → disk image /
+                // system snapshot, not a drive the user manages.
+                if Self.isDiskImageOrReadOnly(path: path) { return nil }
+            }
+
             return VolumeInfo(
                 name: name,
                 mountPoint: path,
                 totalBytes: UInt64(total),
                 usedBytes: UInt64(total - available),
-                isBootVolume: path == "/"
+                isBootVolume: isBoot
             )
         }
+    }
+
+    /// Inspects the mount flags via `statfs`. A mounted DMG is read-only
+    /// (`MNT_RDONLY`); other pseudo-mounts set `MNT_DONTBROWSE`. Either marks a
+    /// volume we don't want in the Storage list. Returns false if the mount
+    /// can't be statted (fail open — real drives always stat cleanly).
+    private static func isDiskImageOrReadOnly(path: String) -> Bool {
+        var buf = statfs()
+        guard statfs(path, &buf) == 0 else { return false }
+        let flags = buf.f_flags
+        if flags & UInt32(MNT_RDONLY) != 0 { return true }
+        if flags & UInt32(MNT_DONTBROWSE) != 0 { return true }
+        return false
     }
 }

@@ -6,26 +6,25 @@
     <description>Mac Resource Monitor update feed</description>
     <language>en</language>
     <item>
-      <title>Mac Resource Monitor 1.2.0</title>
+      <title>Mac Resource Monitor 1.2.1</title>
       <description><![CDATA[
         <ul>
-          <li>Metric collection now runs off the main thread, fixing two crash-class bugs and keeping the UI smooth under load.</li>
-          <li>Unified severity thresholds and colorblind-friendly glyphs across every card.</li>
-          <li>Process list gains a right-click Kill/Quit menu and a live search field.</li>
-          <li>New live menu-bar readout (CPU + GPU) and a standard Settings window.</li>
+          <li>Storage Volumes no longer lists mounted disk images (DMGs) or other non-physical/read-only volumes — only real drives now appear.</li>
+          <li>Redesigned dashboard layout: wider default window, a balanced card grid (no more orphaned Thermal card), and content that stays centered instead of stretching awkwardly on large displays.</li>
+          <li>Reworked the Local Inference view to spread horizontally with consistent card heights and far less vertical scrolling on laptops.</li>
         </ul>
       ]]></description>
-      <pubDate>Sun, 19 Jul 2026 16:53:35 +0000</pubDate>
+      <pubDate>Sun, 19 Jul 2026 20:05:04 +0000</pubDate>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <!-- edSignature + length are filled in by scripts/stage-release.sh at
            release time (EdDSA-signs the notarized DMG). Never upload with the
            placeholder below — Sparkle rejects a mismatched signature. -->
       <enclosure
-        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.2.0.dmg"
-        sparkle:version="2"
-        sparkle:shortVersionString="1.2.0"
-        sparkle:edSignature="mTv7h5iaE+VjDpYQxq4xGFvNM0GuV7ZfOF58xMnrf7UV9j8GPbgn2i8uM07pK0Y6xafhPw3eDla+Z1zdgGjvCg=="
-        length="2976467"
+        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.2.1.dmg"
+        sparkle:version="3"
+        sparkle:shortVersionString="1.2.1"
+        sparkle:edSignature="pCAoWxT6RyfHhG69a8/S2OvTwHY7gMIIUdq2NLPrGpqmub88e0D2UUyOVwiHzBcItEKjBwitvpOsJ4hiPI/8BQ=="
+        length="2986362"
         type="application/octet-stream" />
     </item>
   </channel>

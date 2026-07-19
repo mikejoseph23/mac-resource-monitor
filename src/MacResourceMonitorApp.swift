@@ -13,7 +13,10 @@ struct MacResourceMonitorApp: App {
                 .environmentObject(metricsManager)
                 .environmentObject(layout)
         }
-        .defaultSize(width: 900, height: 700)
+        // Wider-than-tall default so the extra horizontal room spreads the
+        // bottom panels (Thermal / Storage / AI) across instead of stacking
+        // them into a scroll. Capped at 1200 so it still fits a 13–14" MacBook.
+        .defaultSize(width: 1200, height: 840)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Mac Resource Monitor") {
