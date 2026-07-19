@@ -22,41 +22,36 @@ struct DashboardView: View {
     private let columnSpacing: CGFloat = 10
     private let horizontalInset: CGFloat = 50
 
-    private var unitColumnWidth: CGFloat {
-        max(((contentWidth - columnSpacing * CGFloat(columnCount - 1)) / CGFloat(columnCount)), 100)
+    /// Upper bound on the dashboard content width. Below this the layout stays
+    /// fully responsive; above it the content stops stretching and the extra
+    /// window width becomes centered side margins — so little panels never go
+    /// full-bleed and sparse on a big display.
+    private let contentMaxWidth: CGFloat = 1180
+
+    private var thermalVisible: Bool { shouldRender(.thermal) }
+
+    /// Default-profile grid cards, **excluding** Thermal. Thermal is placed
+    /// last — either filling a trailing gap in the grid, or leading the bottom
+    /// panel row — so it never sits orphaned with two empty columns beside it.
+    private var gridCardWidgets: [DashboardWidget] {
+        layout.orderedGridWidgets().filter { $0 != .thermal && shouldRender($0) }
     }
 
-    private func columnWidth(span: Int) -> CGFloat {
-        unitColumnWidth * CGFloat(span) + columnSpacing * CGFloat(span - 1)
-    }
-
-    /// Visible widgets paired with their column span, packed into rows of
-    /// total span ≤ columnCount. Emphasized widgets span 2; others span 1.
-    /// Uses first-fit-with-lookahead so a span-2 card grabs the next span-1
-    /// card to fill the row, instead of sitting alone with empty space.
-    private var packedRows: [[(widget: DashboardWidget, span: Int)]] {
-        var queue: [(DashboardWidget, Int)] = layout.orderedGridWidgets()
-            .filter { shouldRender($0) }
-            .map { ($0, layout.activeProfile.emphasized.contains($0) ? 2 : 1) }
-
-        var rows: [[(DashboardWidget, Int)]] = []
-        while !queue.isEmpty {
-            let first = queue.removeFirst()
-            var row: [(DashboardWidget, Int)] = [first]
-            var width = first.1
-            var idx = 0
-            while width < columnCount && idx < queue.count {
-                if queue[idx].1 + width <= columnCount {
-                    row.append(queue[idx])
-                    width += queue[idx].1
-                    queue.remove(at: idx)
-                } else {
-                    idx += 1
-                }
-            }
-            rows.append(row)
+    /// `gridCardWidgets` chunked into rows of `columnCount` (all span 1 in the
+    /// default profile).
+    private var gridRows: [[DashboardWidget]] {
+        stride(from: 0, to: gridCardWidgets.count, by: columnCount).map {
+            Array(gridCardWidgets[$0..<min($0 + columnCount, gridCardWidgets.count)])
         }
-        return rows
+    }
+
+    /// True when the last grid row has exactly one empty column, so Thermal can
+    /// slot in to complete a full 3×N grid (e.g. Mac Studio with Power +
+    /// Frequency → 8 cards → 3,3,2 + Thermal = perfect 3,3,3). When false,
+    /// Thermal drops to the bottom row alongside the Storage / AI panels.
+    private var thermalFillsGridGap: Bool {
+        guard thermalVisible, let last = gridRows.last else { return false }
+        return last.count == columnCount - 1
     }
 
     var body: some View {
@@ -88,6 +83,11 @@ struct DashboardView: View {
                     }
                     .padding(.horizontal, horizontalInset)
                     .padding(.vertical, 12)
+                    // Cap the content width and center it, so beyond the cap the
+                    // window grows side margins instead of stretching the cards
+                    // and bottom panels full-bleed.
+                    .frame(maxWidth: contentMaxWidth)
+                    .frame(maxWidth: .infinity)
                 }
                 .onPreferenceChange(DashboardWidthKey.self) { newWidth in
                     let usable = max(newWidth - horizontalInset * 2, 200)
@@ -184,82 +184,132 @@ struct DashboardView: View {
 
     // MARK: - Dashboard layouts
 
-    /// Default profile: uniform 3-column grid, with bottom panels (Storage,
-    /// LM Studio) laid out side-by-side beneath.
+    /// Default profile: uniform 3-column grid of metric cards, with Thermal +
+    /// the Storage / AI panels spread horizontally across the bottom so nothing
+    /// sits orphaned and the lower widgets stay in view without deep scrolling.
     private var uniformGridLayout: some View {
-        VStack(spacing: 10) {
-            let rows = packedRows
+        let fillGap = thermalFillsGridGap
+        let stacked = contentWidth < 720
+        // Build the render rows, appending Thermal to the last row when it fills
+        // the trailing grid gap. `equalWidthRow` then lays each row out as equal
+        // flexible columns, padding short rows so the grid stretches to the full
+        // content width and lines up edge-to-edge with the bottom panels.
+        var rows = gridRows
+        if fillGap, !rows.isEmpty {
+            rows[rows.count - 1].append(.thermal)
+        }
+        return VStack(spacing: 10) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(alignment: .top, spacing: columnSpacing) {
-                    ForEach(row, id: \.widget) { item in
-                        card(for: item.widget, emphasized: false, compact: false)
-                            .frame(width: columnWidth(span: item.span))
-                    }
-                    if row.reduce(0, { $0 + $1.span }) < columnCount {
-                        Spacer(minLength: 0)
-                    }
+                equalWidthRow(row, stacked: stacked) { widget in
+                    card(for: widget, emphasized: false, compact: false)
                 }
             }
 
-            bottomPanelsRow
+            bottomRegion(includeThermal: thermalVisible && !fillGap)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Profiles with emphasis: featured cards stacked in a 2/3 left column,
-    /// compact cards + Storage + LM Studio panels stacked in a 1/3 right
-    /// column so the right-side space below the short widgets gets used.
+    /// Profiles with emphasis (e.g. Local Inference): featured cards spread
+    /// across the top in a row, the remaining compact cards in a grid beneath
+    /// them, and the Storage / AI panels side by side at the bottom. Laying it
+    /// out in horizontal bands (instead of two tall stacked columns) uses the
+    /// available width and keeps the whole dashboard in view without a deep
+    /// vertical scroll on a laptop. Falls back to a single stack when narrow.
     private var twoColumnLayout: some View {
         let widgets = layout.orderedGridWidgets().filter { shouldRender($0) }
         let featured = widgets.filter { layout.activeProfile.emphasized.contains($0) }
         let compactList = widgets.filter { !layout.activeProfile.emphasized.contains($0) }
-        let volumes = metricsManager.currentSnapshot?.disk.volumes ?? []
-        let showVolumes  = layout.isVisible(.volumes) && !volumes.isEmpty
-        let showLMStudio = layout.isVisible(.lmStudio)
+        let compactRows = stride(from: 0, to: compactList.count, by: columnCount).map {
+            Array(compactList[$0..<min($0 + columnCount, compactList.count)])
+        }
+        let stacked = contentWidth < 720
 
-        return HStack(alignment: .top, spacing: columnSpacing) {
-            VStack(spacing: 10) {
-                ForEach(featured) { widget in
-                    card(for: widget, emphasized: true, compact: false)
-                }
+        return VStack(spacing: 10) {
+            // Featured hero cards, spread evenly across the top.
+            equalWidthRow(featured, stacked: stacked) { widget in
+                card(for: widget, emphasized: true, compact: false)
             }
-            .frame(width: columnWidth(span: 2))
 
-            VStack(spacing: 10) {
-                ForEach(compactList) { widget in
+            // Remaining metrics as a responsive grid of compact cards.
+            ForEach(Array(compactRows.enumerated()), id: \.offset) { _, row in
+                equalWidthRow(row, stacked: stacked) { widget in
                     card(for: widget, emphasized: false, compact: true)
                 }
-                if showVolumes {
-                    VolumesPanelView(volumes: volumes)
-                }
-                if showLMStudio {
-                    aiBackendsSection
-                }
             }
-            .frame(width: columnWidth(span: 1))
+
+            // Storage Volumes + Local AI Models, side by side at the bottom.
+            bottomRegion(includeThermal: false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Bottom panels (Storage + AI backends, side by side)
-
+    /// Lays `widgets` out as equal-width columns in a row (stacking vertically
+    /// on a narrow window). Each card fills its share of the width via
+    /// `maxWidth: .infinity`, so the row scales with the available space.
     @ViewBuilder
-    private var bottomPanelsRow: some View {
+    private func equalWidthRow(
+        _ widgets: [DashboardWidget],
+        stacked: Bool,
+        @ViewBuilder card: @escaping (DashboardWidget) -> some View
+    ) -> some View {
+        if stacked {
+            VStack(spacing: 10) {
+                ForEach(widgets) { widget in
+                    card(widget).frame(maxWidth: .infinity)
+                }
+            }
+        } else {
+            HStack(alignment: .top, spacing: columnSpacing) {
+                ForEach(widgets) { widget in
+                    card(widget).frame(maxWidth: .infinity)
+                }
+                // Pad a short final row so its cards keep the grid's column
+                // width instead of stretching to fill the leftover space.
+                if widgets.count < columnCount {
+                    ForEach(0..<(columnCount - widgets.count), id: \.self) { _ in
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Bottom region (Thermal + Storage + AI backends, spread across)
+
+    /// Lays Thermal (when not already filling a grid gap), Storage Volumes and
+    /// Local AI Models out as equal-width columns so the lower widgets sit in
+    /// the visible viewport instead of stacking into a tall scroll. Falls back
+    /// to a vertical stack on a narrow window.
+    @ViewBuilder
+    private func bottomRegion(includeThermal: Bool) -> some View {
         let volumes = metricsManager.currentSnapshot?.disk.volumes ?? []
         let showVolumes  = layout.isVisible(.volumes) && !volumes.isEmpty
         let showLMStudio = layout.isVisible(.lmStudio)
+        let hasAny = includeThermal || showVolumes || showLMStudio
+        let stacked = contentWidth < 720
 
-        if showVolumes && showLMStudio {
-            HStack(alignment: .top, spacing: 10) {
-                VolumesPanelView(volumes: volumes)
-                    .frame(maxWidth: .infinity)
-                aiBackendsSection
-                    .frame(width: 340)
+        if hasAny {
+            let panels = Group {
+                if includeThermal {
+                    card(for: .thermal, emphasized: false, compact: false)
+                        .frame(maxWidth: .infinity)
+                }
+                if showVolumes {
+                    VolumesPanelView(volumes: volumes)
+                        .frame(maxWidth: .infinity)
+                }
+                if showLMStudio {
+                    aiBackendsSection
+                        .frame(maxWidth: .infinity)
+                }
             }
-        } else if showVolumes {
-            VolumesPanelView(volumes: volumes)
-        } else if showLMStudio {
-            aiBackendsSection
+
+            if stacked {
+                VStack(spacing: 10) { panels }
+            } else {
+                HStack(alignment: .top, spacing: 10) { panels }
+            }
         }
     }
 
