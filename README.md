@@ -10,15 +10,28 @@ A native macOS dashboard that consolidates system resource monitoring into a sin
 
 ![Mac Resource Monitor — Local Inference profile](screenshot-inference.png)
 
-## Download
+## Download & Install
 
 Just want to run it? Grab the latest release — no build tools required.
 
-- **[⬇ Download MacResourceMonitor-v1.1.0.dmg](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.1.0/MacResourceMonitor-v1.1.0.dmg)** (recommended)
-- [Download MacResourceMonitor-v1.1.0.zip](https://github.com/mikejoseph23/mac-resource-monitor/releases/download/v1.1.0/MacResourceMonitor-v1.1.0.zip)
-- [All releases](https://github.com/mikejoseph23/mac-resource-monitor/releases)
+- **[⬇ Download the latest DMG](https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.2.1.dmg)** (current version 1.2.1)
+- [Download page](https://iadev.net/mac-resource-monitor/) — always links the newest release
 
-Open the DMG and drag **Mac Resource Monitor.app** into `/Applications`. The release is signed with a Developer ID certificate and notarized by Apple, so it launches without Gatekeeper warnings.
+To install:
+
+1. Open the DMG and drag **Mac Resource Monitor.app** into `/Applications`.
+2. Launch it from `/Applications` (or Spotlight).
+
+The release is signed with a Developer ID certificate and notarized + stapled by Apple, so it launches cleanly through Gatekeeper. On first launch you may still see the standard "downloaded from the internet" confirmation — click **Open**.
+
+**Requirements:** macOS 14.0+ (Sonoma) on an Apple Silicon Mac. It's tuned for a Mac Studio M3 Ultra but runs on any Apple Silicon Mac.
+
+## Updates
+
+The app updates itself via [Sparkle](https://sparkle-project.org/) — no need to re-download manually. New releases are delivered automatically from the [appcast feed](https://iadev.net/mac-resource-monitor/appcast.xml).
+
+- Use **Check for Updates…** in the menu to check on demand.
+- Toggle **Automatically check for updates** in **Settings → General** to control background checks.
 
 ## Why
 
