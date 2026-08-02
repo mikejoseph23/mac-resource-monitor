@@ -64,7 +64,7 @@ enum DashboardProfile: String, CaseIterable, Identifiable {
         case .default:
             return nil
         case .localInference:
-            return ["ollama", "llama", "lm studio", "lmstudio", "mlx",
+            return ["ollama", "llama", "lm studio", "lmstudio", "mlx", "omlx",
                     "vllm", "python", "huggingface", "text-generation"]
         }
     }

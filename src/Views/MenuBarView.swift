@@ -63,17 +63,19 @@ struct MenuBarView: View {
                         .foregroundStyle(thermalColor(for: snapshot.thermal.thermalState))
                 }
 
-                // AI backend status
+                // AI backend status — only the ones that are actually up, so
+                // the popover doesn't grow three dead rows on a machine that
+                // runs none of them.
+                let backends = runningBackends(snapshot)
                 HStack(spacing: 6) {
                     Image(systemName: "brain")
                         .foregroundStyle(.secondary)
-                    Text("LM Studio")
+                    Text("Local AI")
                         .font(.subheadline)
                     Spacer()
-                    let lm = snapshot.lmStudio
-                    Text(lm.status == .connected ? "Connected" : "Not Connected")
+                    Text(backends.isEmpty ? "Not Running" : backends.joined(separator: ", "))
                         .font(.subheadline)
-                        .foregroundStyle(lm.status == .connected ? Color.green : Color.secondary)
+                        .foregroundStyle(backends.isEmpty ? Color.secondary : Color.green)
                 }
             } else {
                 HStack {
@@ -121,6 +123,22 @@ struct MenuBarView: View {
     private func formatBytes(_ bytes: UInt64) -> String {
         let gb = Double(bytes) / 1_073_741_824
         return String(format: "%.1f GB", gb)
+    }
+
+    /// Names of the local inference servers currently answering, with a loaded
+    /// model count where the backend reports one.
+    private func runningBackends(_ snapshot: SystemSnapshot) -> [String] {
+        var names: [String] = []
+        if snapshot.lmStudio.status == .connected {
+            names.append("LM Studio (\(snapshot.lmStudio.loadedCount))")
+        }
+        if snapshot.omlx.isOnline {
+            names.append("oMLX (\(snapshot.omlx.loadedCount))")
+        }
+        if snapshot.ollama.isOnline {
+            names.append("Ollama (\(snapshot.ollama.loadedCount))")
+        }
+        return names
     }
 
     private func thermalIcon(for state: ProcessInfo.ThermalState) -> String {

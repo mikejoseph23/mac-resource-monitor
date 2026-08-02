@@ -24,14 +24,20 @@ actor CollectionEngine {
     private let selfCollector = SelfMetricsCollector()
     private let processCollector = ProcessCollector()
     private let lmStudioCollector = LMStudioCollector()
+    private let omlxCollector = OMLXCollector()
+    private let ollamaCollector = OllamaCollector()
 
     /// Runs one full collection pass on the actor's executor (a cooperative
     /// background thread, never main) and returns an assembled snapshot. The
     /// `IOReportBridge` 100ms `Thread.sleep` inside the GPU/Power collectors
     /// therefore blocks a background pool thread, not the UI thread.
     func collect() async -> SystemSnapshot {
-        // Fire the LM Studio request concurrently with the synchronous collectors.
+        // Fire the AI-backend HTTP polls concurrently with each other and with
+        // the synchronous collectors. Each backend is independently offline-safe,
+        // so a missing server costs one refused connection, not a stalled tick.
         async let lmStudioResult = lmStudioCollector.collect()
+        async let omlxResult = omlxCollector.collect()
+        async let ollamaResult = ollamaCollector.collect()
 
         let cpu = cpuCollector.collect()
         let memory = memoryCollector.collect()
@@ -43,6 +49,8 @@ actor CollectionEngine {
         let selfMetrics = selfCollector.collect()
         let processes = processCollector.collect()
         let lmStudio = await lmStudioResult
+        let omlx = await omlxResult
+        let ollama = await ollamaResult
 
         return SystemSnapshot(
             timestamp: Date(),
@@ -55,7 +63,9 @@ actor CollectionEngine {
             power: power,
             selfMetrics: selfMetrics,
             processes: processes,
-            lmStudio: lmStudio
+            lmStudio: lmStudio,
+            omlx: omlx,
+            ollama: ollama
         )
     }
 }

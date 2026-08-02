@@ -159,6 +159,101 @@ struct LMStudioMetrics {
     static let offline = LMStudioMetrics(status: .offline, models: [])
 }
 
+// MARK: - oMLX
+
+/// oMLX (app.omlx) serves MLX models from a local FastAPI server. `/health` is
+/// unauthenticated and always available; `/api/status` carries the interesting
+/// numbers but requires the server's API key, which we read out of
+/// `~/.omlx/settings.json` — see `OMLXCollector`. `detailed` records whether
+/// that richer call succeeded, so the UI can show fewer fields instead of
+/// pretending zeros are real.
+struct OMLXMetrics {
+    enum Status {
+        case offline
+        case loading      // port bound, pinned models still preloading (503)
+        case connected
+    }
+
+    let status: Status
+    let detailed: Bool
+    let version: String?
+    let defaultModel: String?
+    let discoveredCount: Int
+    let loadedCount: Int
+    let loadingCount: Int
+    let loadedModels: [String]
+    let modelMemoryUsedBytes: UInt64
+    let modelMemoryMaxBytes: UInt64?
+    let activeRequests: Int
+    let waitingRequests: Int
+    let generationTPS: Double?
+    let prefillTPS: Double?
+    let cacheEfficiency: Double?
+
+    var isOnline: Bool { status != .offline }
+    var isBusy: Bool { activeRequests > 0 || waitingRequests > 0 || loadingCount > 0 }
+
+    var memoryFraction: Double? {
+        guard let max = modelMemoryMaxBytes, max > 0 else { return nil }
+        return Double(modelMemoryUsedBytes) / Double(max)
+    }
+
+    static let offline = OMLXMetrics(
+        status: .offline,
+        detailed: false,
+        version: nil,
+        defaultModel: nil,
+        discoveredCount: 0,
+        loadedCount: 0,
+        loadingCount: 0,
+        loadedModels: [],
+        modelMemoryUsedBytes: 0,
+        modelMemoryMaxBytes: nil,
+        activeRequests: 0,
+        waitingRequests: 0,
+        generationTPS: nil,
+        prefillTPS: nil,
+        cacheEfficiency: nil
+    )
+}
+
+// MARK: - Ollama
+
+struct OllamaModel: Identifiable {
+    var id: String { name }
+    let name: String
+    let sizeBytes: UInt64
+    let vramBytes: UInt64
+    let parameterSize: String?
+    let quantization: String?
+    let family: String?
+    /// When Ollama will unload the model unless it's used again.
+    let expiresAt: Date?
+
+    /// Ollama reports total resident size and the VRAM slice separately; a
+    /// partial offload is the interesting (slow) case worth surfacing.
+    var isFullyOnGPU: Bool { sizeBytes > 0 && vramBytes >= sizeBytes }
+}
+
+struct OllamaMetrics {
+    enum Status {
+        case offline
+        case connected
+    }
+
+    let status: Status
+    let version: String?
+    /// Models pulled to disk (from `/api/tags`), not just resident ones.
+    let installedCount: Int
+    let loadedModels: [OllamaModel]
+
+    var loadedCount: Int { loadedModels.count }
+    var isOnline: Bool { status != .offline }
+    var residentBytes: UInt64 { loadedModels.reduce(0) { $0 + $1.sizeBytes } }
+
+    static let offline = OllamaMetrics(status: .offline, version: nil, installedCount: 0, loadedModels: [])
+}
+
 struct SystemSnapshot: Identifiable {
     let id = UUID()
     let timestamp: Date
@@ -172,4 +267,6 @@ struct SystemSnapshot: Identifiable {
     let selfMetrics: AppSelfMetrics
     let processes: [ProcessMetrics]
     let lmStudio: LMStudioMetrics
+    let omlx: OMLXMetrics
+    let ollama: OllamaMetrics
 }

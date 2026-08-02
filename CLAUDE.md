@@ -28,6 +28,10 @@ Native SwiftUI macOS app (bundle ID: `com.mikejoseph.mac-resource-monitor`) that
 
 - **Models** (`src/Models/`) — Immutable metric structs (`CPUMetrics`, `MemoryMetrics`, etc.) and `MetricsHistory` (in-memory ring buffer, 300 snapshots max).
 - **Services** (`src/Services/`) — One collector per metric type (`CPUCollector`, `MemoryCollector`, `GPUCollector`, `DiskCollector`, `NetworkCollector`, `ProcessCollector`, `ThermalCollector`, `SelfMetricsCollector`). Each tracks deltas across samples for rate calculations. `MetricsManager` orchestrates them all.
+- **AI backend collectors** — `LMStudioCollector`, `OMLXCollector` and `OllamaCollector` are `actor`s that poll local inference servers over HTTP and feed the "Local AI Models" panel. All three are offline-safe; a server that isn't running costs one refused connection per tick.
+  - LM Studio: `127.0.0.1:1234`, `GET /api/v0/models`.
+  - oMLX: host/port/API key are read from oMLX's own `~/.omlx/settings.json` (re-read only when its mtime changes), defaulting to `127.0.0.1:8000`. `GET /health` is unauthenticated; `GET /api/status` needs the key and adds loaded model ids, tok/s, queue depth and cache hit rate.
+  - Ollama: `127.0.0.1:11434` or `OLLAMA_HOST`. `GET /api/version` + `/api/ps`; `/api/tags` is polled every ~30s rather than every tick.
 - **Views** (`src/Views/`) — `DashboardView` (tabbed: metric cards grid + process list), `MetricCardView` (reusable card with sparkline and severity indicator), `ProcessListView` (sortable table with grouped processes), `MenuBarView` (compact popover), `SelfMetricsView` (app's own resource usage in footer).
 
 ## Project Layout

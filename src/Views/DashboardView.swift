@@ -640,7 +640,12 @@ struct DashboardView: View {
     // MARK: - AI Backends
 
     private var aiBackendsSection: some View {
-        let lm = metricsManager.currentSnapshot?.lmStudio ?? .offline
+        let snapshot = metricsManager.currentSnapshot
+        let lm = snapshot?.lmStudio ?? .offline
+        let omlx = snapshot?.omlx ?? .offline
+        let ollama = snapshot?.ollama ?? .offline
+        let onlineCount = [lm.status == .connected, omlx.isOnline, ollama.isOnline].filter { $0 }.count
+
         return VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
@@ -651,77 +656,22 @@ struct DashboardView: View {
 
                 Spacer()
 
-                lmStudioStatusBadge(lm)
+                backendsStatusBadge(onlineCount: onlineCount, total: 3)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
 
             Divider()
 
-            switch lm.status {
-            case .offline:
-                HStack(spacing: 10) {
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.gray)
-                        .frame(width: 20)
-                    Text("LM Studio")
-                        .font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Circle().fill(Color.gray).frame(width: 6, height: 6)
-                        Text("Not Running")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(14)
+            lmStudioBackend(lm)
 
-            case .connected:
-                VStack(spacing: 0) {
-                    // Summary row
-                    HStack(spacing: 10) {
-                        Image(systemName: "server.rack")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.green)
-                            .frame(width: 20)
-                        Text("LM Studio")
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
-                        Text("\(lm.loadedCount) loaded / \(lm.availableCount) available")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+            Divider().opacity(0.5)
 
-                    // Loaded models
-                    if !lm.loadedModels.isEmpty {
-                        Divider().opacity(0.3)
-                        VStack(spacing: 6) {
-                            ForEach(lm.loadedModels) { model in
-                                lmStudioModelRow(model)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                    }
+            omlxBackend(omlx)
 
-                    // Available (not loaded) — collapsed summary
-                    let unloaded = lm.models.filter { !$0.isLoaded }
-                    if !unloaded.isEmpty {
-                        Divider().opacity(0.3)
-                        HStack {
-                            Text("\(unloaded.count) more model\(unloaded.count == 1 ? "" : "s") available")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                    }
-                }
-            }
+            Divider().opacity(0.5)
+
+            ollamaBackend(ollama)
         }
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -733,15 +683,310 @@ struct DashboardView: View {
         }
     }
 
-    private func lmStudioStatusBadge(_ lm: LMStudioMetrics) -> some View {
+    private func backendsStatusBadge(onlineCount: Int, total: Int) -> some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(lm.status == .connected ? Color.green : Color.gray)
+                .fill(onlineCount > 0 ? Color.green : Color.gray)
                 .frame(width: 6, height: 6)
-            Text(lm.status == .connected ? "Connected" : "Offline")
+            Text(onlineCount > 0 ? "\(onlineCount) of \(total) running" : "None running")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// One backend's title row: icon, name, and a right-hand summary that reads
+    /// as the status when the server is down.
+    private func backendSummaryRow(icon: String,
+                                   name: String,
+                                   tint: Color,
+                                   summary: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(tint)
+                .frame(width: 20)
+            Text(name)
+                .font(.system(size: 12, weight: .medium))
+            Spacer()
+            Text(summary)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func backendOfflineRow(icon: String, name: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(.gray)
+                .frame(width: 20)
+            Text(name)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+            HStack(spacing: 6) {
+                Circle().fill(Color.gray).frame(width: 6, height: 6)
+                Text("Not Running")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    /// Small grey caption under a backend's model list (tok/s, memory, queue).
+    private func backendStatsRow(_ items: [String]) -> some View {
+        HStack(spacing: 10) {
+            ForEach(items, id: \.self) { item in
+                Text(item)
+            }
+            Spacer()
+        }
+        .font(.system(size: 9, design: .monospaced))
+        .foregroundStyle(.tertiary)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
+    }
+
+    private func moreModelsRow(_ count: Int) -> some View {
+        HStack {
+            Text("\(count) more model\(count == 1 ? "" : "s") available")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: LM Studio
+
+    @ViewBuilder
+    private func lmStudioBackend(_ lm: LMStudioMetrics) -> some View {
+        switch lm.status {
+        case .offline:
+            backendOfflineRow(icon: "server.rack", name: "LM Studio")
+
+        case .connected:
+            VStack(spacing: 0) {
+                backendSummaryRow(
+                    icon: "server.rack",
+                    name: "LM Studio",
+                    tint: .green,
+                    summary: "\(lm.loadedCount) loaded / \(lm.availableCount) available"
+                )
+
+                if !lm.loadedModels.isEmpty {
+                    Divider().opacity(0.3)
+                    VStack(spacing: 6) {
+                        ForEach(lm.loadedModels) { model in
+                            lmStudioModelRow(model)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+
+                let unloaded = lm.models.filter { !$0.isLoaded }
+                if !unloaded.isEmpty {
+                    Divider().opacity(0.3)
+                    moreModelsRow(unloaded.count)
+                }
+            }
+        }
+    }
+
+    // MARK: oMLX
+
+    @ViewBuilder
+    private func omlxBackend(_ omlx: OMLXMetrics) -> some View {
+        switch omlx.status {
+        case .offline:
+            backendOfflineRow(icon: "cpu.fill", name: "oMLX")
+
+        case .loading, .connected:
+            let loading = omlx.status == .loading
+            VStack(spacing: 0) {
+                backendSummaryRow(
+                    icon: "cpu.fill",
+                    name: "oMLX",
+                    tint: loading ? .orange : .green,
+                    summary: loading
+                        ? "Preloading models…"
+                        : "\(omlx.loadedCount) loaded / \(omlx.discoveredCount) discovered"
+                )
+
+                // Model names only come from the authenticated /api/status; with
+                // just /health we fall back to naming the default model.
+                let names = omlx.detailed
+                    ? omlx.loadedModels
+                    : [omlx.defaultModel].compactMap { $0 }
+
+                if !names.isEmpty {
+                    Divider().opacity(0.3)
+                    VStack(spacing: 6) {
+                        ForEach(names, id: \.self) { name in
+                            omlxModelRow(name: name,
+                                         isDefault: name == omlx.defaultModel,
+                                         resident: omlx.detailed)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                    .padding(.bottom, omlxStats(omlx).isEmpty ? 10 : 6)
+                }
+
+                let stats = omlxStats(omlx)
+                if !stats.isEmpty {
+                    backendStatsRow(stats)
+                }
+            }
+        }
+    }
+
+    private func omlxStats(_ omlx: OMLXMetrics) -> [String] {
+        var stats: [String] = []
+        if omlx.modelMemoryUsedBytes > 0 {
+            if let max = omlx.modelMemoryMaxBytes, max > 0 {
+                stats.append("\(formatGBorMB(omlx.modelMemoryUsedBytes)) / \(formatGBorMB(max))")
+            } else {
+                stats.append(formatGBorMB(omlx.modelMemoryUsedBytes))
+            }
+        }
+        if let tps = omlx.generationTPS, tps > 0 {
+            stats.append(String(format: "%.0f tok/s gen", tps))
+        }
+        if let prefill = omlx.prefillTPS, prefill > 0 {
+            stats.append(String(format: "%.0f tok/s prefill", prefill))
+        }
+        if omlx.activeRequests > 0 || omlx.waitingRequests > 0 {
+            stats.append("\(omlx.activeRequests) active, \(omlx.waitingRequests) queued")
+        }
+        if let cache = omlx.cacheEfficiency, cache > 0 {
+            stats.append(String(format: "%.0f%% cache", cache <= 1 ? cache * 100 : cache))
+        }
+        if omlx.loadingCount > 0 {
+            stats.append("\(omlx.loadingCount) loading")
+        }
+        return stats
+    }
+
+    private func omlxModelRow(name: String, isDefault: Bool, resident: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "text.bubble")
+                .font(.system(size: 11))
+                .foregroundStyle(.green)
+                .frame(width: 16)
+
+            Text(name)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+
+            if isDefault {
+                Text("DEFAULT")
+                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            if resident {
+                Text("Loaded")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.green.opacity(0.7)))
+            }
+        }
+    }
+
+    // MARK: Ollama
+
+    @ViewBuilder
+    private func ollamaBackend(_ ollama: OllamaMetrics) -> some View {
+        switch ollama.status {
+        case .offline:
+            backendOfflineRow(icon: "shippingbox", name: "Ollama")
+
+        case .connected:
+            VStack(spacing: 0) {
+                backendSummaryRow(
+                    icon: "shippingbox",
+                    name: "Ollama",
+                    tint: .green,
+                    summary: "\(ollama.loadedCount) loaded / \(ollama.installedCount) installed"
+                )
+
+                if !ollama.loadedModels.isEmpty {
+                    Divider().opacity(0.3)
+                    VStack(spacing: 6) {
+                        ForEach(ollama.loadedModels) { model in
+                            ollamaModelRow(model)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+
+                let idle = ollama.installedCount - ollama.loadedCount
+                if ollama.loadedModels.isEmpty && idle > 0 {
+                    Divider().opacity(0.3)
+                    moreModelsRow(idle)
+                }
+            }
+        }
+    }
+
+    private func ollamaModelRow(_ model: OllamaModel) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "text.bubble")
+                .font(.system(size: 11))
+                .foregroundStyle(.green)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.name)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    if let family = model.family { Text(family) }
+                    if let params = model.parameterSize { Text(params) }
+                    if let quant = model.quantization { Text(quant) }
+                    Text(formatGBorMB(model.sizeBytes))
+                    // A partial offload means part of the model is running off
+                    // CPU memory — worth flagging, since it tanks tok/s.
+                    if !model.isFullyOnGPU && model.sizeBytes > 0 {
+                        Text("\(formatGBorMB(model.vramBytes)) on GPU")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            if let expires = model.expiresAt {
+                Text(expiryLabel(expires))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// Ollama's keep-alive countdown. Far-future expiries mean `keep_alive: -1`.
+    private func expiryLabel(_ date: Date) -> String {
+        let seconds = date.timeIntervalSinceNow
+        if seconds > 60 * 60 * 24 * 365 { return "pinned" }
+        if seconds <= 0 { return "unloading" }
+        if seconds < 60 { return "\(Int(seconds))s left" }
+        if seconds < 3600 { return "\(Int(seconds / 60))m left" }
+        return "\(Int(seconds / 3600))h left"
     }
 
     private func lmStudioModelRow(_ model: LMStudioModel) -> some View {
