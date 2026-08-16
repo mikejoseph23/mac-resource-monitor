@@ -75,9 +75,13 @@ sed -e "s|MacResourceMonitor-v[0-9][0-9.]*\.dmg|$DMG_NAME|g" \
     deploy/updates/index.html > "$UPLOAD/index.html"
 
 echo ""
-echo "Done. Upload EVERYTHING in $UPLOAD/ to iadev.net/mac-resource-monitor/ :"
+echo "Done. Staged in $UPLOAD/ :"
 ls -lh "$UPLOAD/" | awk 'NR>1{print "    " $9 "  (" $5 ")"}'
 echo ""
-echo "Then purge Cloudflare cache for appcast.xml (same URL, new content)."
+echo "Next: ./deploy/pack-for-lymedeploy.sh to push this release through LymeDeploy."
+echo ""
+echo "Fallback (LymeDeploy unavailable) — upload EVERYTHING in $UPLOAD/ by hand to"
+echo "iadev.net/mac-resource-monitor/, then purge Cloudflare cache for appcast.xml"
+echo "(same URL, new content)."
 echo "Verify the DMG's EdDSA signature is what shipped:"
 echo "    \"$SIGN_TOOL\" \"$VERSIONED_DMG\""
