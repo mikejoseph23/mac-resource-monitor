@@ -7,7 +7,10 @@
 #      key from the login Keychain — the same "ed25519" key SUPublicEDKey pins)
 #   3. rewrites deploy/updates/appcast.xml: enclosure url, sparkle:version
 #      (CFBundleVersion), sparkle:shortVersionString, length, edSignature, pubDate
-#   4. stages the versioned DMG + appcast.xml + web.config into dist/upload/
+#   4. stages the versioned DMG + appcast.xml + web.config + website/index.html +
+#      website/screenshot.png into dist/upload/ (website/ is the single source of
+#      truth for landing-page content; deploy/updates/ holds server config + the
+#      appcast this script rewrites)
 #
 # Then upload EVERYTHING in dist/upload/ to iadev.net/mac-resource-monitor/ and
 # purge the Cloudflare cache for appcast.xml (same URL, new content).
@@ -21,6 +24,8 @@ cd "$(dirname "$0")/.."
 
 SRC_DMG="${1:-dist/Mac Resource Monitor.dmg}"
 [ -f "$SRC_DMG" ] || { echo "!! DMG not found: $SRC_DMG" >&2; exit 1; }
+[ -f "website/index.html" ] || { echo "!! website/index.html not found" >&2; exit 1; }
+[ -f "website/screenshot.png" ] || { echo "!! website/screenshot.png not found" >&2; exit 1; }
 
 APPCAST="deploy/updates/appcast.xml"
 UPLOAD="dist/upload"
@@ -67,12 +72,12 @@ rm -rf "$UPLOAD"; mkdir -p "$UPLOAD"
 cp "$VERSIONED_DMG" "$UPLOAD/"
 cp "$APPCAST" "$UPLOAD/"
 cp deploy/updates/web.config "$UPLOAD/"
-cp deploy/updates/screenshot.png "$UPLOAD/"
+cp website/screenshot.png "$UPLOAD/"
 # Landing page: rewrite the DMG filename + version labels to this release so the
 # download button and version text track the release without a manual edit.
 sed -e "s|MacResourceMonitor-v[0-9][0-9.]*\.dmg|$DMG_NAME|g" \
     -e "s|v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}|v$VERSION|g" \
-    deploy/updates/index.html > "$UPLOAD/index.html"
+    website/index.html > "$UPLOAD/index.html"
 
 echo ""
 echo "Done. Staged in $UPLOAD/ :"
