@@ -238,17 +238,32 @@ actor AIStorageCollector {
     /// "Explore logs" viewer's default (bounded) open. Root-guards before any
     /// I/O; a denied or since-vanished file comes back as `.denied` /
     /// `.missingFile` rather than a crash or a silently-empty string.
-    func readTail(path: String, limit: Int = 256 * 1024) async -> (status: ReadStatus, text: String, totalBytes: Int, truncated: Bool) {
+    func readTail(path: String, limit: Int = 256 * 1024) async -> (status: ReadStatus, text: String, totalBytes: Int, truncated: Bool, startOffset: Int) {
         guard let resolved = resolvedIfReadable(path) else {
-            return (.denied, "", 0, false)
+            return (.denied, "", 0, false, 0)
         }
         guard let data = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
             // Vanished between `listFiles` and this call (rotated/deleted) —
             // not the same thing as "denied", and not a crash either.
-            return (.missingFile, "", 0, false)
+            return (.missingFile, "", 0, false, 0)
         }
         let sliced = AIStorageTailReader.sliceTail(data, limit: limit)
-        return (.ok, sliced.text, sliced.totalBytes, sliced.truncated)
+        return (.ok, sliced.text, sliced.totalBytes, sliced.truncated, sliced.startOffset)
+    }
+
+    /// Reads the bounded window of at most `limit` bytes *before* `endOffset`
+    /// — the viewer's "page in older content" call. Same root guard and same
+    /// memory-mapped read as `readTail`; the file is never held in memory in
+    /// full, so scrolling back through a multi-GB log stays bounded.
+    func readWindow(path: String, endOffset: Int, limit: Int) async -> (status: ReadStatus, text: String, totalBytes: Int, startOffset: Int) {
+        guard let resolved = resolvedIfReadable(path) else {
+            return (.denied, "", 0, 0)
+        }
+        guard let data = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
+            return (.missingFile, "", 0, 0)
+        }
+        let window = AIStorageTailReader.sliceWindow(data, endOffset: endOffset, limit: limit)
+        return (.ok, window.text, data.count, window.startOffset)
     }
 
     /// Reads the *entire* file at `path` for the viewer's explicit "load full
@@ -658,12 +673,12 @@ enum AIStorageTailReader {
     /// Takes the last `limit` bytes of `data`, aligns forward to the next
     /// newline so the first visible line isn't a torn fragment, and decodes
     /// the remainder as lossy UTF-8.
-    static func sliceTail(_ data: Data, limit: Int) -> (text: String, totalBytes: Int, truncated: Bool) {
-        guard !data.isEmpty else { return ("", 0, false) }
+    static func sliceTail(_ data: Data, limit: Int) -> (text: String, totalBytes: Int, truncated: Bool, startOffset: Int) {
+        guard !data.isEmpty else { return ("", 0, false, 0) }
 
         let totalBytes = data.count
         guard totalBytes > limit else {
-            return (String(decoding: data, as: UTF8.self), totalBytes, false)
+            return (String(decoding: data, as: UTF8.self), totalBytes, false, 0)
         }
 
         var start = data.index(data.endIndex, offsetBy: -limit)
@@ -676,6 +691,30 @@ enum AIStorageTailReader {
 
         let tail = data[start...]
         let text = String(decoding: tail, as: UTF8.self)
-        return (text, totalBytes, totalBytes > tail.count)
+        return (text, totalBytes, totalBytes > tail.count, start - data.startIndex)
+    }
+
+    /// Takes the window of at most `limit` bytes that *ends* at `endOffset`,
+    /// aligned forward to a line boundary exactly like `sliceTail`. This is the
+    /// page-in-older-content half of the viewer: paging up from a tail slice
+    /// asks for the bytes before it, so even a pathological multi-GB single log
+    /// is read a bounded window at a time rather than whole.
+    ///
+    /// `startOffset` in the result is where the returned text actually begins;
+    /// `startOffset == 0` means the caller now holds the head of the file and
+    /// there is nothing older left to page in.
+    static func sliceWindow(_ data: Data, endOffset: Int, limit: Int) -> (text: String, startOffset: Int) {
+        let end = min(max(endOffset, 0), data.count)
+        let budget = max(limit, 0)
+        guard end > 0, budget > 0 else { return ("", max(end, 0)) }
+
+        var start = max(end - budget, 0)
+        if start > 0,
+           let newline = data[(data.startIndex + start)..<(data.startIndex + end)].firstIndex(of: UInt8(ascii: "\n")) {
+            start = data.index(after: newline) - data.startIndex
+        }
+
+        let window = data[(data.startIndex + start)..<(data.startIndex + end)]
+        return (String(decoding: window, as: UTF8.self), start)
     }
 }

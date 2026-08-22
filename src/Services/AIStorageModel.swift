@@ -22,6 +22,10 @@ struct AIStorageFileContent {
     let isTruncated: Bool
     let displayPath: String
     let looksBinary: Bool
+    /// Byte offset in the file where `text` begins. `0` means the caller holds
+    /// the head of the file and there is nothing older left to page in; the
+    /// viewer uses it as the cursor for `loadEarlier(entry:before:limit:)`.
+    var startOffset: Int = 0
 }
 
 /// Drives the Local AI Storage panel.
@@ -145,11 +149,30 @@ final class AIStorageModel: ObservableObject {
             totalBytes: result.totalBytes,
             isTruncated: result.truncated,
             displayPath: entry.displayPath,
-            looksBinary: entry.looksBinary
+            looksBinary: entry.looksBinary,
+            startOffset: result.startOffset
         )
     }
 
-    /// Loads `entry` in full — the explicit "view whole file" action.
+    /// Pages in the bounded window of at most `limit` bytes immediately before
+    /// `endOffset` — the viewer's scroll-up path, and also how *Load full file*
+    /// is served (with `limit` set to everything remaining). `isTruncated` in
+    /// the result means "there is still older content above this window".
+    func loadEarlier(entry: AIStorageFileEntry, before endOffset: Int, limit: Int) async -> AIStorageFileContent {
+        let result = await collector.readWindow(path: entry.path, endOffset: endOffset, limit: limit)
+        return AIStorageFileContent(
+            access: access(for: result.status),
+            text: result.text,
+            totalBytes: result.totalBytes,
+            isTruncated: result.startOffset > 0,
+            displayPath: entry.displayPath,
+            looksBinary: entry.looksBinary,
+            startOffset: result.startOffset
+        )
+    }
+
+    /// Loads `entry` in full. Kept as a read API; the viewer itself now pages
+    /// with `loadEarlier` rather than taking a whole file in one read.
     func loadFull(entry: AIStorageFileEntry) async -> AIStorageFileContent {
         let result = await collector.readFull(path: entry.path)
         return AIStorageFileContent(
