@@ -15,16 +15,17 @@ what LM Studio and oMLX retain on disk, deliberately off the 2s tick — its own
 
 ## Current Status
 
-**v1.4.0 is built, notarized, and pushed to LymeDeploy — it is NOT live yet.**
+**v1.4.0 is live in production and verified — a real 1.3.0 install auto-updated to it.**
 
 - Two read-only browsers shipped this session: **Explore logs** and **Explore chats**.
 - `main` is pushed through `a964b3e`. `swift build` clean (debug **and** release), `swift test`
   **131 tests, 0 failures**.
-- **Blocked on you:** in LymeDeploy, create a release pinning `MacResourceMonitor.Downloads 1.4.0`
-  and deploy it to Production. Until that happens, `iadev.net/mac-resource-monitor/appcast.xml`
-  still advertises 1.3.0 and no user sees the update.
-- Untracked artifact `dist/MacResourceMonitor.Downloads.1.4.0.nupkg` is the pushed package —
-  safe to delete once the release is live. (`dist/upload/` is gitignored; this filename isn't.)
+- LymeDeploy release 1.4.0 (id 102) → `Production=succeeded`. The served appcast advertises
+  1.4.0 / `sparkle:version=5` with an `edSignature` and `length` byte-identical to the staged DMG.
+  No Cloudflare purge was needed — the appcast returns `cf-cache-status: DYNAMIC`.
+- **Nothing is blocked.** The next piece of work is free choice; see What's Next.
+- Untracked artifact `dist/MacResourceMonitor.Downloads.1.4.0.nupkg` is the pushed package and can
+  be deleted. (`dist/upload/` is gitignored; this filename isn't.)
 - Visual sign-off of the new sheets was done by hand and never captured; no screenshot suite exists.
 
 ## What's Done
@@ -49,22 +50,21 @@ what LM Studio and oMLX retain on disk, deliberately off the 2s tick — its own
 
 ## What's Next
 
-1. **Finish the release** — LymeDeploy: pin `MacResourceMonitor.Downloads 1.4.0` → deploy to
-   Production. Then confirm `https://iadev.net/mac-resource-monitor/appcast.xml` serves 1.4.0
-   (purge Cloudflare cache for that URL if it's stale) and check that an installed 1.3.0 offers
-   the update.
-2. **Add a release-config build to your definition of green.** Release builds were silently broken
+1. **Add a release-config build to your definition of green.** Release builds were silently broken
    from `31be0fb` until `fb5d04b` this session: three `#Preview` blocks referenced the
    `#if DEBUG`-gated `AIStorageSnapshot.preview` without being gated themselves. `swift build` and
    `swift test` are both debug, so nothing caught it — it only surfaced mid-release. Run
    `swift build -c release` in CI or pre-commit.
-3. **Optional follow-ups** (none blocking):
+2. **Optional follow-ups** (none blocking):
    - `AIStorageModel.listFiles` collapses errors *and* `CancellationError` into `[]` via `try?`,
      so a genuinely failed walk renders as "No files here". Worth distinguishing.
    - LM Studio's image sidecar `preview.data` is full-size bytes, not a downscale, so every
      thumbnail decodes a full PNG. Invisible at 3 images; would matter at hundreds.
    - The oMLX **Vision features** purge target's description says what the files are but not that
      they're a re-derivable cache — the fact that makes the checkbox safe to tick.
+   - `SUFeedURL` in `src/Info.plist` points at `iadev.net`, which 301-redirects to `www.iadev.net`.
+     Sparkle follows it, but every client pays an extra round trip on every update check. Changing
+     it is deliberate — the feed URL is baked into every shipped copy.
    - Reconstructing agentic/API conversations from `server-logs` was explicitly ruled out of
      scope: that traffic never reaches `conversations/`, and long bodies are elided as
      `<Truncated in logs>`, so it is lossy by nature. Best-effort only if you ever want it.
