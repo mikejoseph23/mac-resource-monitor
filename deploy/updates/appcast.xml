@@ -6,26 +6,26 @@
     <description>Mac Resource Monitor update feed</description>
     <language>en</language>
     <item>
-      <title>Mac Resource Monitor 1.3.0</title>
+      <title>Mac Resource Monitor 1.4.0</title>
       <description><![CDATA[
         <ul>
-          <li>The Local AI Models panel now monitors three local inference servers instead of one: LM Studio, oMLX and Ollama.</li>
-          <li>oMLX needs no setup — its host, port and API key are picked up from oMLX's own settings. Shows loaded models, model memory against the ceiling, generation and prefill tokens/sec, queue depth and cache hit rate.</li>
-          <li>Ollama shows resident models with size, parameter count and quantization, the keep-alive countdown, and flags any model that is only partly on the GPU.</li>
-          <li>The menu bar popover now lists whichever inference backends are actually running, with their loaded model counts.</li>
+          <li>New: <b>Explore logs</b> — a read-only browser for what LM Studio and oMLX retain on disk. Server logs are grouped by month and filterable to the last 7 or 30 days; large logs open at the end and page backwards as you scroll, so even a multi-gigabyte file stays responsive.</li>
+          <li>New: <b>Explore chats</b> — LM Studio's saved conversations rendered as readable transcripts instead of raw JSON, with reasoning folded away, timings tucked out of the way, and images shown inline and click-to-enlarge.</li>
+          <li>Both browsers are strictly read-only: they can open and search what is stored, and can never modify or delete it.</li>
+          <li>The Local AI Storage panel's actions now live in a single menu on the card, with Purge set apart from the read-only browsers.</li>
         </ul>
       ]]></description>
-      <pubDate>Sun, 02 Aug 2026 01:35:21 +0000</pubDate>
+      <pubDate>Sat, 22 Aug 2026 18:51:07 +0000</pubDate>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <!-- edSignature + length are filled in by scripts/stage-release.sh at
            release time (EdDSA-signs the notarized DMG). Never upload with the
            placeholder below — Sparkle rejects a mismatched signature. -->
       <enclosure
-        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.3.0.dmg"
-        sparkle:version="4"
-        sparkle:shortVersionString="1.3.0"
-        sparkle:edSignature="z8fZY5DvFS7AgfCkUcOQstjJOtxeqJEt5dlzxXuHKJAW/BZO4fjeCd9RNqwd+434ng7/6tmT0j7n2NPmqzlRAg=="
-        length="3065798"
+        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.4.0.dmg"
+        sparkle:version="5"
+        sparkle:shortVersionString="1.4.0"
+        sparkle:edSignature="yTD0pCZQVVvGDwdHqFy/cLJApg0b5mn8ztdKFWh+CN7CxX2RzxvDdCqWhS7hTtrAKLQdGd57GFPAcMNJ3U1CDA=="
+        length="3751518"
         type="application/octet-stream" />
     </item>
   </channel>
