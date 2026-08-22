@@ -453,7 +453,7 @@ struct AIStorageLogsSheet: View {
 
             Spacer(minLength: 8)
 
-            if selectionIsJSON, content?.state == .ok, !(content?.looksBinary ?? false) {
+            if selectionIsJSON, content?.access == .ok, !(content?.looksBinary ?? false) {
                 Picker("", selection: $jsonRendering) {
                     ForEach(JSONRendering.allCases) { mode in
                         Text(mode.rawValue).tag(mode)
@@ -481,8 +481,8 @@ struct AIStorageLogsSheet: View {
 
     @ViewBuilder
     private func contentBody(_ content: AIStorageFileContent) -> some View {
-        switch content.state {
-        case .missing:
+        switch content.access {
+        case .missingFile:
             viewerPlaceholder(
                 icon: "exclamationmark.triangle",
                 title: "This file no longer exists",
@@ -500,7 +500,7 @@ struct AIStorageLogsSheet: View {
                 viewerPlaceholder(
                     icon: "square.grid.3x3.fill",
                     title: "Not a text file",
-                    detail: "\(aiStorageFormatBytes(content.totalBytes)) of binary data — rendering it as text would be meaningless.",
+                    detail: "\(aiStorageFormatBytes(UInt64(max(0, content.totalBytes)))) of binary data — rendering it as text would be meaningless.",
                     action: selection.map { entry in
                         ("Reveal in Finder", {
                             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry.path)])
@@ -531,7 +531,7 @@ struct AIStorageLogsSheet: View {
             Image(systemName: "arrow.down.to.line")
                 .font(.system(size: 10))
                 .foregroundStyle(.orange)
-            Text("Showing the last \(aiStorageFormatBytes(UInt64(content.text.utf8.count))) of \(aiStorageFormatBytes(content.totalBytes)).")
+            Text("Showing the last \(aiStorageFormatBytes(UInt64(content.text.utf8.count))) of \(aiStorageFormatBytes(UInt64(max(0, content.totalBytes)))).")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
@@ -731,7 +731,7 @@ struct AIStorageLogsSheet: View {
     /// Recomputes the on-screen text (and its blocks) from the current content
     /// and raw/pretty choice. The one place that decides what the viewer shows.
     private func refreshDisplayText() {
-        guard let content, content.state == .ok, !content.looksBinary else {
+        guard let content, content.access == .ok, !content.looksBinary else {
             displayText = ""
             displayBlocks = []
             return
@@ -794,56 +794,24 @@ struct AIStorageLogsSource {
     var loadFull: @MainActor (AIStorageFileEntry) async -> AIStorageFileContent
 }
 
-// MARK: - M2 bridge (STUB — replace the marked bodies with the real calls)
+// MARK: - Model bridge
 //
-// The real filesystem wrappers (`AIStorageModel.listFiles(targetID:)`,
-// `.open(entry:)`, `.loadFull(entry:)`) land with Milestone 2. Until then this
-// bridge answers with empty listings so the UI builds and runs. Swapping it is
-// a three-line change; see the comment on each line.
+// Every filesystem-facing call the sheet makes goes through here, so the viewer
+// stays testable against a fixture source (see `.preview()` below) and the real
+// read-only wrappers live in `AIStorageModel`.
+//
+// `explorableTargets` filters to `exists` deliberately: the snapshot's own
+// `explorableTargets` does not, because the panel wants to list a target it can
+// see is absent, and the browser does not.
 
 extension AIStorageLogsSource {
     static func live(model: AIStorageModel) -> AIStorageLogsSource {
         AIStorageLogsSource(
             explorableTargets: { model.snapshot?.explorableTargets.filter(\.exists) ?? [] },
-            // M2: await model.listFiles(targetID: id)
-            listFiles: { _ in [] },
-            // M2: await model.open(entry: entry)
-            open: { entry in .missing(displayPath: entry.displayPath) },
-            // M2: await model.loadFull(entry: entry)
-            loadFull: { entry in .missing(displayPath: entry.displayPath) }
+            listFiles: { await model.listFiles(targetID: $0) },
+            open: { await model.open(entry: $0) },
+            loadFull: { await model.loadFull(entry: $0) }
         )
-    }
-}
-
-/// One file's readable contents, as handed to the viewer.
-///
-/// STUB — Milestone 2 owns the real definition (it is what
-/// `AIStorageCollector.open(entry:)` returns). Delete this declaration when M2
-/// lands; the viewer only touches `state`, `text`, `totalBytes`, `isTruncated`,
-/// `displayPath` and `looksBinary`.
-struct AIStorageFileContent: Equatable {
-    enum State: Equatable {
-        /// Read succeeded — `text` holds the whole file or its tail.
-        case ok
-        /// The path failed `AIStoragePathGuard.isReadable`, or macOS refused it.
-        case denied
-        /// Rotated or purged between the listing and the open.
-        case missing
-    }
-
-    let state: State
-    /// The file's text, or its tail when `isTruncated`. Lossy UTF-8.
-    let text: String
-    /// Size of the whole file on disk, not of `text`.
-    let totalBytes: UInt64
-    /// True when `text` is only the tail.
-    let isTruncated: Bool
-    let displayPath: String
-    let looksBinary: Bool
-
-    static func missing(displayPath: String) -> AIStorageFileContent {
-        AIStorageFileContent(state: .missing, text: "", totalBytes: 0,
-                             isTruncated: false, displayPath: displayPath, looksBinary: false)
     }
 }
 
@@ -871,13 +839,13 @@ extension AIStorageLogsSource {
 
     private static func previewContent(for entry: AIStorageFileEntry, full: Bool) -> AIStorageFileContent {
         if entry.looksBinary {
-            return AIStorageFileContent(state: .ok, text: "", totalBytes: entry.sizeBytes,
+            return AIStorageFileContent(access: .ok, text: "", totalBytes: Int(entry.sizeBytes),
                                         isTruncated: false, displayPath: entry.displayPath,
                                         looksBinary: true)
         }
         if entry.name.hasSuffix(".json") {
             let json = #"{"id":"1784921389195","title":"Quantisation trade-offs","messages":[{"role":"user","content":"How much does Q4_K_M cost me on a 70B?"},{"role":"assistant","content":"Roughly 40 GB resident, versus 140 GB at fp16."}],"model":"qwen3-coder-30b"}"#
-            return AIStorageFileContent(state: .ok, text: json, totalBytes: entry.sizeBytes,
+            return AIStorageFileContent(access: .ok, text: json, totalBytes: Int(entry.sizeBytes),
                                         isTruncated: false, displayPath: entry.displayPath,
                                         looksBinary: false)
         }
@@ -892,8 +860,8 @@ extension AIStorageLogsSource {
             default: lines.append("\(stamp)  [INFO]  [LM STUDIO SERVER] Generated prediction: 618 tokens in 4.21s (146.8 tok/s)")
             }
         }
-        return AIStorageFileContent(state: .ok, text: lines.joined(separator: "\n"),
-                                    totalBytes: entry.sizeBytes, isTruncated: truncated,
+        return AIStorageFileContent(access: .ok, text: lines.joined(separator: "\n"),
+                                    totalBytes: Int(entry.sizeBytes), isTruncated: truncated,
                                     displayPath: entry.displayPath, looksBinary: false)
     }
 }
