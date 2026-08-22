@@ -36,10 +36,6 @@ struct AIStoragePanelView: View {
                 } else if !model.isScanning {
                     emptyState
                 }
-
-                if model.snapshot?.presentProviders.isEmpty == false {
-                    actions
-                }
             }
             .padding(14)
         }
@@ -51,6 +47,7 @@ struct AIStoragePanelView: View {
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                 )
         }
+        .contextMenu { actionMenuItems }
         .onAppear { model.scanIfStale() }
         .sheet(isPresented: $showingPurge) {
             AIStoragePurgeSheet(model: model)
@@ -92,9 +89,45 @@ struct AIStoragePanelView: View {
             .disabled(model.isScanning)
             .foregroundStyle(.tertiary)
             .help("Rescan")
+
+            actionMenu
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    /// Every action this panel offers, behind one glyph.
+    ///
+    /// Four buttons in a row wrapped badly at the narrow layout, and three of
+    /// them open read-only sheets that are browsed occasionally rather than a
+    /// primary gesture — so they live here, with Purge divided off and marked
+    /// destructive rather than sitting a pointer-width from "Explore chats…".
+    /// The same items are on the card's right-click menu.
+    private var actionMenu: some View {
+        Menu {
+            actionMenuItems
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 11))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(.tertiary)
+        .disabled(model.snapshot == nil)
+        .help("Search, explore or purge retained data")
+    }
+
+    @ViewBuilder
+    private var actionMenuItems: some View {
+        Button("Search retained text…") { showingSearch = true }
+        Button("Explore logs…") { showingExplore = true }
+            .disabled(model.snapshot?.containsExplorable != true)
+        Button("Explore chats…") { showingChats = true }
+            .disabled(!model.hasConversations)
+        Divider()
+        Button("Purge…", role: .destructive) { showingPurge = true }
+            .disabled(model.snapshot == nil)
     }
 
     private var summaryLine: some View {
@@ -202,56 +235,6 @@ struct AIStoragePanelView: View {
     /// Four actions is one more than this row comfortably fits when the panel
     /// is sharing the bottom region side-by-side, so it falls back to two rows
     /// rather than truncating a button label. Wide layouts are unchanged.
-    private var actions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack {
-                searchButton
-                exploreLogsButton
-                exploreChatsButton
-                Spacer()
-                purgeButton
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    searchButton
-                    Spacer()
-                    purgeButton
-                }
-                HStack {
-                    exploreLogsButton
-                    exploreChatsButton
-                    Spacer()
-                }
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    private var searchButton: some View {
-        Button("Search retained text…") { showingSearch = true }
-            .controlSize(.small)
-    }
-
-    private var exploreLogsButton: some View {
-        Button("Explore logs…") { showingExplore = true }
-            .controlSize(.small)
-            .disabled(model.snapshot?.containsExplorable != true)
-            .help("Read the retained logs and conversations — read-only")
-    }
-
-    private var exploreChatsButton: some View {
-        Button("Explore chats…") { showingChats = true }
-            .controlSize(.small)
-            .disabled(!model.hasConversations)
-            .help("Read LM Studio's saved GUI conversations as transcripts — read-only")
-    }
-
-    private var purgeButton: some View {
-        Button("Purge…") { showingPurge = true }
-            .controlSize(.small)
-            .disabled(model.snapshot == nil)
-    }
-
     // MARK: - Formatting
 
     private func relativeAge(_ date: Date) -> String {
