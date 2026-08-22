@@ -185,6 +185,45 @@ final class AIStorageModel: ObservableObject {
         )
     }
 
+    // MARK: - Explore chats (read-only)
+
+    /// True once the LM Studio conversations directory is present on disk, so
+    /// the panel can enable its "Explore chats…" button without reaching into
+    /// the snapshot itself.
+    var hasConversations: Bool {
+        snapshot?.targets.contains { $0.id == "lmstudio.conversations" && $0.exists } ?? false
+    }
+
+    /// Lists the saved GUI conversations, newest first. Same contract as
+    /// `listFiles`: its own cancellable pass, and a failure comes back empty
+    /// rather than throwing.
+    func listConversations() async -> [AIStorageChatSummary] {
+        (try? await collector.listConversations()) ?? []
+    }
+
+    /// Decodes one conversation for the transcript viewer.
+    func loadTranscript(_ summary: AIStorageChatSummary) async
+        -> (access: AIStorageFileAccess, transcript: AIStorageChatTranscript?) {
+        let result = await collector.readTranscript(path: summary.path,
+                                                    fileName: summary.fileName,
+                                                    modifiedAt: summary.modifiedAt)
+        return (access(for: result.status), result.transcript)
+    }
+
+    /// Loads one image a conversation references. `full: false` is the cheap
+    /// sidecar thumbnail; `full: true` reads the real file, and is only called
+    /// when the user enlarges it.
+    func loadChatImage(fileIdentifier: String, full: Bool) async -> AIStorageChatImage {
+        let result = await collector.readChatImage(fileIdentifier: fileIdentifier, full: full)
+        return AIStorageChatImage(
+            access: access(for: result.status),
+            data: result.data,
+            originalName: result.originalName,
+            sizeBytes: result.sizeBytes,
+            isPreview: result.isPreview
+        )
+    }
+
     private func access(for status: AIStorageCollector.ReadStatus) -> AIStorageFileAccess {
         switch status {
         case .ok: return .ok

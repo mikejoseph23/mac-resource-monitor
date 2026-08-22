@@ -281,6 +281,135 @@ actor AIStorageCollector {
         return (.ok, String(decoding: data, as: UTF8.self), data.count)
     }
 
+    // MARK: - Explore chats (read-only)
+
+    /// Directory LM Studio keeps GUI-pasted files in. Not a scan target of its
+    /// own here — `lmstudio.user-files` is measured elsewhere; this is only
+    /// where a conversation's `fileIdentifier` resolves to.
+    private var userFilesDirectory: URL {
+        home.appendingPathComponent(".lmstudio/user-files")
+    }
+
+    /// Lists every saved GUI conversation, newest first (pinned ahead of the
+    /// rest), already decoded far enough to render a list row.
+    ///
+    /// Its own fast, cancellable pass — like `listFiles`, it never triggers
+    /// `scan()` and never touches the `MetricsManager` tick. A file that won't
+    /// decode is still listed (via `unreadableSummary`) rather than silently
+    /// dropped: "the folder has 13 files but the browser shows 12" is a worse
+    /// failure than an honest row.
+    func listConversations() async throws -> [AIStorageChatSummary] {
+        let entries = try await listFiles(targetID: "lmstudio.conversations")
+
+        var summaries: [AIStorageChatSummary] = []
+        summaries.reserveCapacity(entries.count)
+
+        for entry in entries where entry.name.hasSuffix(".json") {
+            try Task.checkCancellation()
+            guard let resolved = resolvedIfReadable(entry.path) else { continue }
+
+            // A conversation file is tens of KB. Anything absurd is listed but
+            // not parsed — decoding a 100 MB JSON blob on the actor would wedge
+            // every other read behind it.
+            guard entry.sizeBytes <= Self.maximumConversationBytes,
+                  let data = try? Data(contentsOf: resolved, options: [.mappedIfSafe]),
+                  let transcript = AIStorageChatParser.transcript(fromJSON: data,
+                                                                  fileName: entry.name,
+                                                                  modifiedAt: entry.modifiedAt)
+            else {
+                summaries.append(AIStorageChatParser.unreadableSummary(
+                    path: entry.path,
+                    displayPath: entry.displayPath,
+                    fileName: entry.name,
+                    sizeBytes: entry.sizeBytes,
+                    modifiedAt: entry.modifiedAt
+                ))
+                continue
+            }
+
+            summaries.append(AIStorageChatParser.summary(
+                for: transcript,
+                path: entry.path,
+                displayPath: entry.displayPath,
+                fileName: entry.name,
+                sizeBytes: entry.sizeBytes,
+                modifiedAt: entry.modifiedAt
+            ))
+        }
+
+        try Task.checkCancellation()
+        return summaries.sorted(by: AIStorageChatParser.newestFirst)
+    }
+
+    /// Reads and decodes one conversation. Root-guarded before any I/O, exactly
+    /// like `readTail`; `.missingFile` covers both "deleted since it was listed"
+    /// and "no longer decodes as a conversation", which the viewer renders as
+    /// the same unreadable state.
+    func readTranscript(path: String, fileName: String, modifiedAt: Date) async
+        -> (status: ReadStatus, transcript: AIStorageChatTranscript?) {
+        guard let resolved = resolvedIfReadable(path) else { return (.denied, nil) }
+        guard let data = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
+            return (.missingFile, nil)
+        }
+        guard data.count <= Self.maximumConversationBytes,
+              let transcript = AIStorageChatParser.transcript(fromJSON: data,
+                                                              fileName: fileName,
+                                                              modifiedAt: modifiedAt) else {
+            return (.missingFile, nil)
+        }
+        return (.ok, transcript)
+    }
+
+    /// Resolves one of a conversation's images.
+    ///
+    /// `full == false` is the thumbnail path and reads the *sidecar*
+    /// (`<fileIdentifier>.metadata.json`), whose `preview.data` is a
+    /// ready-to-render base64 PNG — LM Studio has already decided what a
+    /// preview of this file looks like, so the viewer renders that rather than
+    /// deciding for itself. The real file is only read when the user explicitly
+    /// enlarges an image, and never for anything bigger than
+    /// `maximumImageBytes`.
+    func readChatImage(fileIdentifier: String, full: Bool) async
+        -> (status: ReadStatus, data: Data, originalName: String?, sizeBytes: Int, isPreview: Bool) {
+        guard AIStorageChatParser.isSafeFileIdentifier(fileIdentifier) else {
+            return (.denied, Data(), nil, 0, false)
+        }
+
+        let imagePath = userFilesDirectory.appendingPathComponent(fileIdentifier).path
+        let sidecarPath = imagePath + ".metadata.json"
+
+        if !full,
+           let sidecar = resolvedIfReadable(sidecarPath),
+           let data = try? Data(contentsOf: sidecar, options: [.mappedIfSafe]),
+           let preview = AIStorageChatParser.previewImageData(fromMetadataJSON: data) {
+            return (.ok, preview.data, preview.originalName, preview.sizeBytes, true)
+        }
+
+        // No sidecar (or it carried no preview): fall through to the real file,
+        // which is also the `full == true` path.
+        guard let resolved = resolvedIfReadable(imagePath) else {
+            return (.denied, Data(), nil, 0, false)
+        }
+        guard let values = try? resolved.resourceValues(forKeys: [.fileSizeKey]),
+              let size = values.fileSize else {
+            return (.missingFile, Data(), nil, 0, false)
+        }
+        guard size <= Self.maximumImageBytes else {
+            // Refusing to render is the honest outcome; the viewer offers
+            // Reveal in Finder instead of holding 200 MB of pixels.
+            return (.missingFile, Data(), nil, size, false)
+        }
+        guard let data = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
+            return (.missingFile, Data(), nil, 0, false)
+        }
+        return (.ok, data, nil, data.count, false)
+    }
+
+    /// Parse ceiling for a conversation file (real ones are ~100 KB).
+    private static let maximumConversationBytes: UInt64 = 32 * 1024 * 1024
+    /// Read ceiling for a full-size image (real ones are ~1 MB).
+    private static let maximumImageBytes = 64 * 1024 * 1024
+
     // MARK: - Scan
 
     /// Measures every target. Missing directories come back `exists: false`

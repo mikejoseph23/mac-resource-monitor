@@ -11,6 +11,7 @@ struct AIStoragePanelView: View {
     @State private var showingPurge = false
     @State private var showingSearch = false
     @State private var showingExplore = false
+    @State private var showingChats = false
 
     /// Re-rendered every tick by the dashboard, so "last scanned" ages on its
     /// own without a second timer here.
@@ -59,6 +60,9 @@ struct AIStoragePanelView: View {
         }
         .sheet(isPresented: $showingExplore) {
             AIStorageLogsSheet(model: model)
+        }
+        .sheet(isPresented: $showingChats) {
+            AIStorageChatsSheet(model: model)
         }
     }
 
@@ -195,20 +199,57 @@ struct AIStoragePanelView: View {
         }
     }
 
+    /// Four actions is one more than this row comfortably fits when the panel
+    /// is sharing the bottom region side-by-side, so it falls back to two rows
+    /// rather than truncating a button label. Wide layouts are unchanged.
     private var actions: some View {
-        HStack {
-            Button("Search retained text…") { showingSearch = true }
-                .controlSize(.small)
-            Button("Explore logs…") { showingExplore = true }
-                .controlSize(.small)
-                .disabled(model.snapshot?.containsExplorable != true)
-                .help("Read the retained logs and conversations — read-only")
-            Spacer()
-            Button("Purge…") { showingPurge = true }
-                .controlSize(.small)
-                .disabled(model.snapshot == nil)
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                searchButton
+                exploreLogsButton
+                exploreChatsButton
+                Spacer()
+                purgeButton
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    searchButton
+                    Spacer()
+                    purgeButton
+                }
+                HStack {
+                    exploreLogsButton
+                    exploreChatsButton
+                    Spacer()
+                }
+            }
         }
         .padding(.top, 2)
+    }
+
+    private var searchButton: some View {
+        Button("Search retained text…") { showingSearch = true }
+            .controlSize(.small)
+    }
+
+    private var exploreLogsButton: some View {
+        Button("Explore logs…") { showingExplore = true }
+            .controlSize(.small)
+            .disabled(model.snapshot?.containsExplorable != true)
+            .help("Read the retained logs and conversations — read-only")
+    }
+
+    private var exploreChatsButton: some View {
+        Button("Explore chats…") { showingChats = true }
+            .controlSize(.small)
+            .disabled(!model.hasConversations)
+            .help("Read LM Studio's saved GUI conversations as transcripts — read-only")
+    }
+
+    private var purgeButton: some View {
+        Button("Purge…") { showingPurge = true }
+            .controlSize(.small)
+            .disabled(model.snapshot == nil)
     }
 
     // MARK: - Formatting
