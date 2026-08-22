@@ -1,6 +1,29 @@
 import Foundation
 import Combine
 
+/// Whether a file the "Explore logs" viewer asked to open actually came back
+/// as text: `.ok` for a normal read, `.denied` when the path resolved outside
+/// the allowed roots (a bug, not a user-facing path in practice), and
+/// `.missingFile` when it was rotated/deleted between `listFiles` and open.
+enum AIStorageFileAccess: Equatable {
+    case ok
+    case denied
+    case missingFile
+}
+
+/// What `AIStorageModel.open(entry:)` / `loadFull(entry:)` hand back to the
+/// viewer. Thin on purpose — `access` carries the outcome, `text`/`totalBytes`
+/// are empty/zero for anything other than `.ok`, and `isTruncated` is always
+/// `false` for `loadFull` (it reads the whole file).
+struct AIStorageFileContent {
+    let access: AIStorageFileAccess
+    let text: String
+    let totalBytes: Int
+    let isTruncated: Bool
+    let displayPath: String
+    let looksBinary: Bool
+}
+
 /// Drives the Local AI Storage panel.
 ///
 /// Deliberately *not* wired into `CollectionEngine` / `MetricsManager`: those
@@ -94,5 +117,56 @@ final class AIStorageModel: ObservableObject {
 
     func search(_ query: String) async -> AIStorageCollector.SearchOutcome? {
         try? await collector.search(query)
+    }
+
+    // MARK: - Explore logs (read-only)
+
+    /// Explorable targets from the last scan, present-on-disk or not — thin
+    /// passthrough so the "Explore logs" entry point doesn't reach into
+    /// `snapshot` directly.
+    var explorableTargets: [AIStorageTarget] {
+        snapshot?.explorableTargets ?? []
+    }
+
+    /// Lists the files under one explorable target. Its own fast, cancellable
+    /// walk — does not touch `rescan()` or its 5-minute floor. A cancelled or
+    /// failed walk comes back empty rather than throwing, since this call
+    /// site has nothing meaningful to do with an error beyond "show nothing".
+    func listFiles(targetID: String) async -> [AIStorageFileEntry] {
+        (try? await collector.listFiles(targetID: targetID)) ?? []
+    }
+
+    /// Opens `entry` bounded to its tail (the default view).
+    func open(entry: AIStorageFileEntry) async -> AIStorageFileContent {
+        let result = await collector.readTail(path: entry.path)
+        return AIStorageFileContent(
+            access: access(for: result.status),
+            text: result.text,
+            totalBytes: result.totalBytes,
+            isTruncated: result.truncated,
+            displayPath: entry.displayPath,
+            looksBinary: entry.looksBinary
+        )
+    }
+
+    /// Loads `entry` in full — the explicit "view whole file" action.
+    func loadFull(entry: AIStorageFileEntry) async -> AIStorageFileContent {
+        let result = await collector.readFull(path: entry.path)
+        return AIStorageFileContent(
+            access: access(for: result.status),
+            text: result.text,
+            totalBytes: result.totalBytes,
+            isTruncated: false,
+            displayPath: entry.displayPath,
+            looksBinary: entry.looksBinary
+        )
+    }
+
+    private func access(for status: AIStorageCollector.ReadStatus) -> AIStorageFileAccess {
+        switch status {
+        case .ok: return .ok
+        case .denied: return .denied
+        case .missingFile: return .missingFile
+        }
     }
 }

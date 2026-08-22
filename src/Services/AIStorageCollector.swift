@@ -13,12 +13,18 @@ import Foundation
 /// reader, the same one `OMLXCollector` polls with, so `~/.omlx/settings.json`
 /// is parsed once. The API key in that file is never requested here.
 actor AIStorageCollector {
-    private let home = FileManager.default.homeDirectoryForCurrentUser
+    /// Scan root. Defaults to the real home directory; tests point this at a
+    /// temp tree via `init(root:)` so `listFiles`/`readTail`/`readFull` can be
+    /// exercised without touching `~/.lmstudio` or `~/.omlx`. The production
+    /// (no-argument) path is unchanged in behavior — `home` is still
+    /// `FileManager.default.homeDirectoryForCurrentUser`.
+    private let home: URL
     private let settings: OMLXSettings
     private let session: URLSession
 
-    init(settings: OMLXSettings = .shared) {
+    init(settings: OMLXSettings = .shared, root: URL? = nil) {
         self.settings = settings
+        self.home = root ?? FileManager.default.homeDirectoryForCurrentUser
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 2
         config.timeoutIntervalForResource = 3
@@ -134,6 +140,130 @@ actor AIStorageCollector {
 
     private func url(for spec: Spec) -> URL {
         home.appendingPathComponent(spec.relativePath)
+    }
+
+    // MARK: - Explore logs (read-only)
+
+    /// Outcome of a root-guarded read, distinguishing "not allowed" from
+    /// "vanished since it was listed" from a normal read — so
+    /// `AIStorageModel`/the UI can render each state without inferring it from
+    /// an empty string.
+    enum ReadStatus: Equatable {
+        case ok
+        /// The path resolved outside `~/.lmstudio` / `~/.omlx`, or into one of
+        /// the never-touch subpaths — refused before any I/O was attempted.
+        case denied
+        /// The path passed the root guard but nothing was there to read (the
+        /// file was deleted/rotated between `listFiles` and this call).
+        case missingFile
+    }
+
+    /// Lists every regular file beneath an explorable target's directory,
+    /// newest first. Never mutates anything; a target that isn't
+    /// `isExplorable`, or whose directory doesn't exist, comes back empty
+    /// rather than throwing — this is a "show me what's there" API, not a
+    /// validating one.
+    ///
+    /// This is intentionally its own fast, cancellable walk — it does not
+    /// touch `scan()`'s 5-minute cadence or the `MetricsManager` 2s tick.
+    func listFiles(targetID: String) async throws -> [AIStorageFileEntry] {
+        guard let spec = Self.specs.first(where: { $0.id == targetID && $0.isExplorable }) else {
+            return []
+        }
+        let directory = url(for: spec)
+        guard directoryExists(directory) else { return [] }
+
+        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
+                                       .isRegularFileKey, .contentModificationDateKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: keys,
+            options: [],          // hidden files count — LM Studio hides plenty
+            errorHandler: { _, _ in true }
+        ) else { return [] }
+
+        let directoryPrefix = directory.path + "/"
+        var entries: [AIStorageFileEntry] = []
+        var checked = 0
+
+        for case let item as URL in enumerator {
+            // Cancellation checked on a stride, same rationale as `measure`:
+            // the walk is ~3000 files, and `checkCancellation` per-file would
+            // be needless overhead.
+            checked += 1
+            if checked % 256 == 0 { try Task.checkCancellation() }
+
+            guard let values = try? item.resourceValues(forKeys: Set(keys)),
+                  values.isRegularFile == true else { continue }
+
+            // Root-guard every yielded path — resolve symlinks first, exactly
+            // like `isPurgeable` does for purge, then drop (never crash on)
+            // anything that resolves outside the allowed roots.
+            let resolvedPath = item.resolvingSymlinksInPath().standardizedFileURL.path
+            guard AIStoragePathGuard.isReadable(path: resolvedPath, homePath: home.path) else { continue }
+
+            let relativePath = item.path.hasPrefix(directoryPrefix)
+                ? String(item.path.dropFirst(directoryPrefix.count))
+                : item.lastPathComponent
+            let modifiedAt = values.contentModificationDate ?? .distantPast
+            let monthSection = spec.id == "lmstudio.server-logs"
+                ? AIStorageLogLayout.monthSection(for: modifiedAt)
+                : nil
+
+            entries.append(AIStorageFileEntry(
+                name: item.lastPathComponent,
+                path: resolvedPath,
+                displayPath: abbreviate(resolvedPath),
+                relativePath: relativePath,
+                sizeBytes: UInt64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0),
+                modifiedAt: modifiedAt,
+                monthSection: monthSection
+            ))
+        }
+
+        try Task.checkCancellation()
+        return entries.sorted(by: AIStorageLogLayout.newestFirst)
+    }
+
+    /// Root-guards `path` (resolving symlinks first) and, if allowed, returns
+    /// the resolved `URL`. `nil` means "denied" — callers turn that straight
+    /// into `ReadStatus.denied` without touching the filesystem.
+    private func resolvedIfReadable(_ path: String) -> URL? {
+        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
+        guard AIStoragePathGuard.isReadable(path: resolved.path, homePath: home.path) else { return nil }
+        return resolved
+    }
+
+    /// Reads up to the last `limit` bytes of the file at `path` for the
+    /// "Explore logs" viewer's default (bounded) open. Root-guards before any
+    /// I/O; a denied or since-vanished file comes back as `.denied` /
+    /// `.missingFile` rather than a crash or a silently-empty string.
+    func readTail(path: String, limit: Int = 256 * 1024) async -> (status: ReadStatus, text: String, totalBytes: Int, truncated: Bool) {
+        guard let resolved = resolvedIfReadable(path) else {
+            return (.denied, "", 0, false)
+        }
+        guard let data = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
+            // Vanished between `listFiles` and this call (rotated/deleted) —
+            // not the same thing as "denied", and not a crash either.
+            return (.missingFile, "", 0, false)
+        }
+        let sliced = AIStorageTailReader.sliceTail(data, limit: limit)
+        return (.ok, sliced.text, sliced.totalBytes, sliced.truncated)
+    }
+
+    /// Reads the *entire* file at `path` for the viewer's explicit "load full
+    /// file" action. A single unbounded read is the accepted tradeoff here:
+    /// it only runs on a deliberate user action (not the default open), and
+    /// in practice LM Studio's own ~10 MB rotation bounds the file size — this
+    /// is not a path that scans thousands of files per tick.
+    func readFull(path: String) async -> (status: ReadStatus, text: String, totalBytes: Int) {
+        guard let resolved = resolvedIfReadable(path) else {
+            return (.denied, "", 0)
+        }
+        guard let data = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
+            return (.missingFile, "", 0)
+        }
+        return (.ok, String(decoding: data, as: UTF8.self), data.count)
     }
 
     // MARK: - Scan
