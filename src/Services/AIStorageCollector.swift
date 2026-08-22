@@ -42,11 +42,14 @@ actor AIStorageCollector {
         /// Subdirectory names measured (and purged) as their own target, so
         /// they aren't double-counted in the parent's total.
         let excludedChildren: [String]
+        /// True for the three text-bearing log targets the "Explore logs"
+        /// browser can open.
+        let isExplorable: Bool
 
         init(id: String, provider: AIStorageProvider, label: String, relativePath: String,
              contents: String, note: String? = nil, noteIsWarning: Bool = false,
              isTextSearchable: Bool = true, requiresOMLXStopped: Bool = false,
-             excludedChildren: [String] = []) {
+             excludedChildren: [String] = [], isExplorable: Bool = false) {
             self.id = id
             self.provider = provider
             self.label = label
@@ -57,6 +60,7 @@ actor AIStorageCollector {
             self.isTextSearchable = isTextSearchable
             self.requiresOMLXStopped = requiresOMLXStopped
             self.excludedChildren = excludedChildren
+            self.isExplorable = isExplorable
         }
     }
 
@@ -71,12 +75,14 @@ actor AIStorageCollector {
              relativePath: ".lmstudio/server-logs",
              contents: "Prompts and responses, verbatim. Request bodies elide the middle with “<Truncated in logs>” but the head and tail survive; responses are logged in full.",
              note: "prompts, no TTL",
-             noteIsWarning: true),
+             noteIsWarning: true,
+             isExplorable: true),
         Spec(id: "lmstudio.conversations",
              provider: .lmStudio,
              label: "Conversations",
              relativePath: ".lmstudio/conversations",
-             contents: "GUI chat history — every message you sent and received in the LM Studio app, in full text."),
+             contents: "GUI chat history — every message you sent and received in the LM Studio app, in full text.",
+             isExplorable: true),
         Spec(id: "lmstudio.user-files",
              provider: .lmStudio,
              label: "Pasted files",
@@ -122,7 +128,8 @@ actor AIStorageCollector {
              provider: .omlx,
              label: "Logs",
              relativePath: ".omlx/logs",
-             contents: "Request metadata only — model, token counts, tok/s. No prompt text."),
+             contents: "Request metadata only — model, token counts, tok/s. No prompt text.",
+             isExplorable: true),
     ]
 
     private func url(for spec: Spec) -> URL {
@@ -164,7 +171,8 @@ actor AIStorageCollector {
                 sizeBytes: measured.bytes,
                 fileCount: measured.files,
                 capBytes: spec.id == "omlx.cache" ? storage.cacheMaxSizeBytes : nil,
-                requiresOMLXStopped: spec.requiresOMLXStopped
+                requiresOMLXStopped: spec.requiresOMLXStopped,
+                isExplorable: spec.isExplorable
             ))
         }
 
@@ -451,5 +459,93 @@ actor AIStorageCollector {
             return false
         }
         return true
+    }
+}
+
+// MARK: - Pure helpers (filesystem-free, unit-testable)
+
+/// Month-sectioning and ordering for the "Explore logs" file list. Pure and
+/// locale-independent so `AIStorageLogLayoutTests` can assert on fixed dates.
+enum AIStorageLogLayout {
+    /// `en_US_POSIX` + a fixed UTC calendar, so the section a log lands in
+    /// never shifts with the user's region or timezone settings.
+    private static let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM"
+        return formatter
+    }()
+
+    /// `YYYY-MM` for `date`, e.g. `2026-08`.
+    static func monthSection(for date: Date) -> String {
+        formatter.string(from: date)
+    }
+
+    /// Newest-first comparator: `modifiedAt` descending, then `name`
+    /// descending as a tiebreak (matches same-second rotations by filename).
+    static func newestFirst(_ a: AIStorageFileEntry, _ b: AIStorageFileEntry) -> Bool {
+        if a.modifiedAt != b.modifiedAt {
+            return a.modifiedAt > b.modifiedAt
+        }
+        return a.name > b.name
+    }
+}
+
+/// The read-only analog of `AIStorageCollector.isPurgeable`: guards every path
+/// the "Explore logs" browser is about to list or read. Pure — takes the
+/// already-resolved path and the home directory as plain strings so it's
+/// testable without touching disk.
+enum AIStoragePathGuard {
+    /// `path` (already symlink-resolved and standardized by the caller) must
+    /// sit strictly under `homePath/.lmstudio` or `homePath/.omlx` — not equal
+    /// to either root — and must not equal or be under any never-touch path.
+    static func isReadable(path: String, homePath: String) -> Bool {
+        let lmStudioRoot = homePath + "/.lmstudio"
+        let omlxRoot = homePath + "/.omlx"
+
+        guard path.hasPrefix(lmStudioRoot + "/") || path.hasPrefix(omlxRoot + "/") else {
+            return false
+        }
+
+        let denied = [
+            "/.lmstudio/models",
+            "/.lmstudio/.internal/bundled-models",
+            "/.omlx/bin",
+            "/.omlx/settings.json",
+        ].map { homePath + $0 }
+
+        for deniedPath in denied where path == deniedPath || path.hasPrefix(deniedPath + "/") {
+            return false
+        }
+        return true
+    }
+}
+
+/// Bounded reading of a log file's tail for the "Explore logs" viewer, so a
+/// 10 MB rotated log never costs 10 MB of viewer memory or a full read.
+enum AIStorageTailReader {
+    /// Takes the last `limit` bytes of `data`, aligns forward to the next
+    /// newline so the first visible line isn't a torn fragment, and decodes
+    /// the remainder as lossy UTF-8.
+    static func sliceTail(_ data: Data, limit: Int) -> (text: String, totalBytes: Int, truncated: Bool) {
+        guard !data.isEmpty else { return ("", 0, false) }
+
+        let totalBytes = data.count
+        guard totalBytes > limit else {
+            return (String(decoding: data, as: UTF8.self), totalBytes, false)
+        }
+
+        var start = data.index(data.endIndex, offsetBy: -limit)
+        // Align up to the first newline after the cut so we don't start
+        // mid-line; if there is no newline in the tail (one giant line), fall
+        // back to the raw cut rather than dropping the whole slice.
+        if let newline = data[start...].firstIndex(of: UInt8(ascii: "\n")) {
+            start = data.index(after: newline)
+        }
+
+        let tail = data[start...]
+        let text = String(decoding: tail, as: UTF8.self)
+        return (text, totalBytes, totalBytes > tail.count)
     }
 }

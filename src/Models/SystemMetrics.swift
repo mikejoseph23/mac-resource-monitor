@@ -316,6 +316,9 @@ struct AIStorageTarget: Identifiable, Hashable {
     let capBytes: UInt64?
     /// The oMLX server holds this open; purging it needs the server stopped.
     let requiresOMLXStopped: Bool
+    /// True for the three text-bearing log targets the "Explore logs" browser
+    /// can open: `lmstudio.server-logs`, `lmstudio.conversations`, `omlx.logs`.
+    let isExplorable: Bool
 
     var capFraction: Double? {
         guard let capBytes, capBytes > 0 else { return nil }
@@ -344,6 +347,18 @@ struct AIStorageSnapshot {
         targets.filter { $0.provider == provider }
     }
 
+    /// Targets the "Explore logs" browser can open, present-on-disk or not —
+    /// the sheet itself decides what to do with a missing directory.
+    var explorableTargets: [AIStorageTarget] {
+        targets.filter(\.isExplorable)
+    }
+
+    /// True once at least one explorable target exists on disk, so the panel
+    /// can enable its "Explore logs…" button.
+    var containsExplorable: Bool {
+        targets.contains { $0.isExplorable && $0.exists }
+    }
+
     static let empty = AIStorageSnapshot(targets: [], scannedAt: .distantPast)
 }
 
@@ -365,6 +380,51 @@ struct AIStoragePurgeResult {
     let failures: [String]
 }
 
+/// One file beneath an explorable `AIStorageTarget`, as listed by the
+/// read-only "Explore logs" browser. Immutable; produced by
+/// `AIStorageCollector.listFiles(targetID:)`.
+struct AIStorageFileEntry: Identifiable, Hashable {
+    var id: String { path }
+    let name: String
+    /// Absolute path on disk.
+    let path: String
+    /// `~`-abbreviated path for display.
+    let displayPath: String
+    /// Path relative to the target's own directory, e.g. "2026-08/2026-08-22.17.log".
+    let relativePath: String
+    let sizeBytes: UInt64
+    let modifiedAt: Date
+    /// `YYYY-MM`, populated only for `lmstudio.server-logs` entries.
+    let monthSection: String?
+    /// Extension-based heuristic: `.log` / `.txt` / `.json` render as text; the
+    /// oMLX cache/vision-feature extensions are binary and get a notice instead.
+    let looksBinary: Bool
+
+    /// The oMLX cache/vision-feature targets are never explorable (see
+    /// `isExplorable` below), so this list only needs to catch stray binary
+    /// files that end up alongside logs/conversations — best-effort, not
+    /// exhaustive.
+    private static let binaryExtensions: Set<String> = ["safetensors", "npy", "npz", "bin", "pt", "gguf"]
+
+    init(name: String, path: String, displayPath: String, relativePath: String,
+         sizeBytes: UInt64, modifiedAt: Date, monthSection: String?) {
+        self.name = name
+        self.path = path
+        self.displayPath = displayPath
+        self.relativePath = relativePath
+        self.sizeBytes = sizeBytes
+        self.modifiedAt = modifiedAt
+        self.monthSection = monthSection
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "log", "txt", "json":
+            self.looksBinary = false
+        default:
+            self.looksBinary = Self.binaryExtensions.contains(ext)
+        }
+    }
+}
+
 #if DEBUG
 extension AIStorageSnapshot {
     /// Fixture matching the shape of a real Mac Studio scan, for previews.
@@ -374,25 +434,56 @@ extension AIStorageSnapshot {
                         contents: "Prompts and responses, verbatim.", note: "prompts, no TTL",
                         noteIsWarning: true, isTextSearchable: true, exists: true,
                         sizeBytes: 31_150_000_000, fileCount: 3_140, capBytes: nil,
-                        requiresOMLXStopped: false),
+                        requiresOMLXStopped: false, isExplorable: true),
         AIStorageTarget(id: "lmstudio.conversations", provider: .lmStudio, label: "Conversations",
                         path: "/x", displayPath: "~/.lmstudio/conversations",
                         contents: "GUI chat history, full text.", note: nil,
                         noteIsWarning: false, isTextSearchable: true, exists: true,
                         sizeBytes: 528_000, fileCount: 42, capBytes: nil,
-                        requiresOMLXStopped: false),
+                        requiresOMLXStopped: false, isExplorable: true),
         AIStorageTarget(id: "omlx.cache", provider: .omlx, label: "Prompt KV cache",
                         path: "/x", displayPath: "~/.omlx/cache",
                         contents: "KV tensors derived from prompts.", note: "cap 150GB",
                         noteIsWarning: false, isTextSearchable: false, exists: true,
                         sizeBytes: 160_900_000_000, fileCount: 91_000,
-                        capBytes: 161_061_273_600, requiresOMLXStopped: true),
+                        capBytes: 161_061_273_600, requiresOMLXStopped: true, isExplorable: false),
         AIStorageTarget(id: "omlx.logs", provider: .omlx, label: "Logs",
                         path: "/x", displayPath: "~/.omlx/logs",
                         contents: "Metadata only.", note: "7-day retention",
                         noteIsWarning: false, isTextSearchable: true, exists: true,
                         sizeBytes: 1_940_000, fileCount: 7, capBytes: nil,
-                        requiresOMLXStopped: false),
+                        requiresOMLXStopped: false, isExplorable: true),
     ], scannedAt: Date().addingTimeInterval(-180))
+
+    /// A handful of `AIStorageFileEntry` fixtures spanning two month sections
+    /// (for the `server-logs` picker) plus one small `.json` conversation, so
+    /// M3's file list and viewer states are all renderable without touching
+    /// disk.
+    static let previewFileEntries: [AIStorageFileEntry] = [
+        AIStorageFileEntry(name: "2026-08-22.17.log",
+                           path: "/x/.lmstudio/server-logs/2026-08/2026-08-22.17.log",
+                           displayPath: "~/.lmstudio/server-logs/2026-08/2026-08-22.17.log",
+                           relativePath: "2026-08/2026-08-22.17.log",
+                           sizeBytes: 10_487_808, modifiedAt: Date().addingTimeInterval(-600),
+                           monthSection: "2026-08"),
+        AIStorageFileEntry(name: "2026-08-21.03.log",
+                           path: "/x/.lmstudio/server-logs/2026-08/2026-08-21.03.log",
+                           displayPath: "~/.lmstudio/server-logs/2026-08/2026-08-21.03.log",
+                           relativePath: "2026-08/2026-08-21.03.log",
+                           sizeBytes: 214_311, modifiedAt: Date().addingTimeInterval(-90_000),
+                           monthSection: "2026-08"),
+        AIStorageFileEntry(name: "2026-07-31.01.log",
+                           path: "/x/.lmstudio/server-logs/2026-07/2026-07-31.01.log",
+                           displayPath: "~/.lmstudio/server-logs/2026-07/2026-07-31.01.log",
+                           relativePath: "2026-07/2026-07-31.01.log",
+                           sizeBytes: 9_820_144, modifiedAt: Date().addingTimeInterval(-1_900_000),
+                           monthSection: "2026-07"),
+        AIStorageFileEntry(name: "1784921389195.conversation.json",
+                           path: "/x/.lmstudio/conversations/1784921389195.conversation.json",
+                           displayPath: "~/.lmstudio/conversations/1784921389195.conversation.json",
+                           relativePath: "1784921389195.conversation.json",
+                           sizeBytes: 8_214, modifiedAt: Date().addingTimeInterval(-3_600),
+                           monthSection: nil),
+    ]
 }
 #endif
