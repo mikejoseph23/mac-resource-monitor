@@ -10,11 +10,12 @@ import Foundation
 ///   polling"; adds loaded model ids, tok/s, queue depth and cache hit rate,
 ///   but is behind `verify_api_key`.
 ///
-/// Rather than making the user paste a key into Settings, we read host, port
-/// and `auth.api_key` straight out of oMLX's own `~/.omlx/settings.json`. The
-/// key never leaves this process except in the Authorization header of a
-/// request to that same loopback server. The file is re-read only when its
-/// modification date changes, so the steady-state cost per tick is one `stat`.
+/// Rather than making the user paste a key into Settings, host, port and
+/// `auth.api_key` come from oMLX's own `~/.omlx/settings.json` via the shared
+/// `OMLXSettings` reader (also used by `AIStorageCollector`). The key never
+/// leaves this process except in the Authorization header of a request to that
+/// same loopback server, and the file is re-read only when its modification
+/// date changes, so the steady-state cost per tick is one `stat`.
 ///
 /// An `actor` for the same reason `LMStudioCollector` is one: `latest` and the
 /// cached endpoint are mutable state touched from an async context.
@@ -22,24 +23,17 @@ actor OMLXCollector {
     private(set) var latest: OMLXMetrics = .offline
 
     private let session: URLSession
-    private let settingsURL: URL
+    private let settings: OMLXSettings
 
-    private var cachedEndpoint: Endpoint?
-    private var cachedSettingsDate: Date?
+    private typealias Endpoint = OMLXSettings.Endpoint
 
-    private struct Endpoint {
-        let base: URL
-        let apiKey: String?
-    }
-
-    init() {
+    init(settings: OMLXSettings = .shared) {
+        self.settings = settings
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 3
         config.timeoutIntervalForResource = 5
         config.waitsForConnectivity = false
         session = URLSession(configuration: config)
-        settingsURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".omlx/settings.json")
     }
 
     @discardableResult
@@ -50,7 +44,7 @@ actor OMLXCollector {
     }
 
     private func fetch() async -> OMLXMetrics {
-        let endpoint = resolveEndpoint()
+        let endpoint = await settings.endpoint()
 
         guard let health = await fetchHealth(endpoint) else { return .offline }
 
@@ -128,55 +122,9 @@ actor OMLXCollector {
         }
     }
 
-    // MARK: - Endpoint discovery
-
-    /// Re-reads `~/.omlx/settings.json` only when its mtime moves; otherwise
-    /// hands back the cached endpoint. Falls back to oMLX's own defaults
-    /// (127.0.0.1:8000, no key) when the file is missing or unreadable, so a
-    /// fresh install with no settings file yet is still detected.
-    private func resolveEndpoint() -> Endpoint {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: settingsURL.path)
-        let modified = attributes?[.modificationDate] as? Date
-
-        if let cachedEndpoint, cachedSettingsDate == modified {
-            return cachedEndpoint
-        }
-
-        let endpoint = readSettings() ?? Endpoint(base: URL(string: "http://127.0.0.1:8000")!, apiKey: nil)
-        cachedEndpoint = endpoint
-        cachedSettingsDate = modified
-        return endpoint
-    }
-
-    private func readSettings() -> Endpoint? {
-        guard let data = try? Data(contentsOf: settingsURL),
-              let file = try? JSONDecoder().decode(SettingsFile.self, from: data) else { return nil }
-
-        // A server bound to 0.0.0.0 (or an unset host) is still reachable on
-        // loopback, and loopback is the only address we should be polling.
-        var host = file.server?.host ?? "127.0.0.1"
-        if host.isEmpty || host == "0.0.0.0" || host == "::" { host = "127.0.0.1" }
-        let port = file.server?.port ?? 8000
-
-        guard let base = URL(string: "http://\(host):\(port)") else { return nil }
-        let key = file.auth?.api_key
-        return Endpoint(base: base, apiKey: (key?.isEmpty ?? true) ? nil : key)
-    }
 }
 
 // MARK: - JSON types
-
-private struct SettingsFile: Decodable {
-    struct Server: Decodable {
-        let host: String?
-        let port: Int?
-    }
-    struct Auth: Decodable {
-        let api_key: String?
-    }
-    let server: Server?
-    let auth: Auth?
-}
 
 private struct HealthResponse: Decodable {
     struct EnginePool: Decodable {

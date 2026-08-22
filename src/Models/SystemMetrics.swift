@@ -270,3 +270,129 @@ struct SystemSnapshot: Identifiable {
     let omlx: OMLXMetrics
     let ollama: OllamaMetrics
 }
+
+// MARK: - Local AI storage
+
+/// Which local inference app wrote the data.
+enum AIStorageProvider: String, CaseIterable, Identifiable {
+    case lmStudio = "LM Studio"
+    case omlx = "oMLX"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .lmStudio: return "bubble.left.and.text.bubble.right"
+        case .omlx:     return "cube.transparent"
+        }
+    }
+}
+
+/// One directory on disk that a local inference app retains prompt-derived
+/// data in. Immutable; produced by `AIStorageCollector.scan()`.
+struct AIStorageTarget: Identifiable, Hashable {
+    /// Stable across scans — the purge sheet's selection keys off it.
+    let id: String
+    let provider: AIStorageProvider
+    /// Row label, e.g. "Server logs".
+    let label: String
+    /// Absolute path scanned.
+    let path: String
+    /// `~`-abbreviated path for display.
+    let displayPath: String
+    /// One line on what is actually in there. Shown in the purge sheet.
+    let contents: String
+    /// Short trailing annotation in the panel, e.g. "prompts, no TTL".
+    let note: String?
+    /// True when `note` describes a privacy hazard rather than a policy.
+    let noteIsWarning: Bool
+    /// False for the oMLX KV cache — binary tensors, not text-searchable.
+    let isTextSearchable: Bool
+    /// False when the directory doesn't exist (app not installed / never used).
+    let exists: Bool
+    let sizeBytes: UInt64
+    let fileCount: Int
+    /// Configured ceiling, when the app has one (oMLX `ssd_cache_max_size`).
+    let capBytes: UInt64?
+    /// The oMLX server holds this open; purging it needs the server stopped.
+    let requiresOMLXStopped: Bool
+
+    var capFraction: Double? {
+        guard let capBytes, capBytes > 0 else { return nil }
+        return min(Double(sizeBytes) / Double(capBytes), 1.0)
+    }
+}
+
+/// The result of one storage scan. `MetricsManager`'s 2s timer never produces
+/// one of these — see `AIStorageCollector` for why.
+struct AIStorageSnapshot {
+    let targets: [AIStorageTarget]
+    let scannedAt: Date
+
+    var totalBytes: UInt64 {
+        targets.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    /// Providers with at least one directory present on this machine.
+    var presentProviders: [AIStorageProvider] {
+        AIStorageProvider.allCases.filter { provider in
+            targets.contains { $0.provider == provider && $0.exists }
+        }
+    }
+
+    func targets(for provider: AIStorageProvider) -> [AIStorageTarget] {
+        targets.filter { $0.provider == provider }
+    }
+
+    static let empty = AIStorageSnapshot(targets: [], scannedAt: .distantPast)
+}
+
+/// One file that matched a retained-text search. Deliberately carries a count
+/// and nothing else: echoing the matched line would write the user's secret to
+/// yet another surface.
+struct AIStorageSearchHit: Identifiable, Hashable {
+    var id: String { path }
+    let path: String
+    let displayPath: String
+    let provider: AIStorageProvider
+    let matchCount: Int
+}
+
+/// What a purge actually did.
+struct AIStoragePurgeResult {
+    let freedBytes: UInt64
+    let removedTargets: [String]
+    let failures: [String]
+}
+
+#if DEBUG
+extension AIStorageSnapshot {
+    /// Fixture matching the shape of a real Mac Studio scan, for previews.
+    static let preview = AIStorageSnapshot(targets: [
+        AIStorageTarget(id: "lmstudio.server-logs", provider: .lmStudio, label: "Server logs",
+                        path: "/x", displayPath: "~/.lmstudio/server-logs",
+                        contents: "Prompts and responses, verbatim.", note: "prompts, no TTL",
+                        noteIsWarning: true, isTextSearchable: true, exists: true,
+                        sizeBytes: 31_150_000_000, fileCount: 3_140, capBytes: nil,
+                        requiresOMLXStopped: false),
+        AIStorageTarget(id: "lmstudio.conversations", provider: .lmStudio, label: "Conversations",
+                        path: "/x", displayPath: "~/.lmstudio/conversations",
+                        contents: "GUI chat history, full text.", note: nil,
+                        noteIsWarning: false, isTextSearchable: true, exists: true,
+                        sizeBytes: 528_000, fileCount: 42, capBytes: nil,
+                        requiresOMLXStopped: false),
+        AIStorageTarget(id: "omlx.cache", provider: .omlx, label: "Prompt KV cache",
+                        path: "/x", displayPath: "~/.omlx/cache",
+                        contents: "KV tensors derived from prompts.", note: "cap 150GB",
+                        noteIsWarning: false, isTextSearchable: false, exists: true,
+                        sizeBytes: 160_900_000_000, fileCount: 91_000,
+                        capBytes: 161_061_273_600, requiresOMLXStopped: true),
+        AIStorageTarget(id: "omlx.logs", provider: .omlx, label: "Logs",
+                        path: "/x", displayPath: "~/.omlx/logs",
+                        contents: "Metadata only.", note: "7-day retention",
+                        noteIsWarning: false, isTextSearchable: true, exists: true,
+                        sizeBytes: 1_940_000, fileCount: 7, capBytes: nil,
+                        requiresOMLXStopped: false),
+    ], scannedAt: Date().addingTimeInterval(-180))
+}
+#endif

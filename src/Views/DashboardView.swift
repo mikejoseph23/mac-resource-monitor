@@ -289,8 +289,8 @@ struct DashboardView: View {
 
     // MARK: - Bottom region (Thermal + Storage + AI backends, spread across)
 
-    /// Lays Thermal (when not already filling a grid gap), Storage Volumes and
-    /// Local AI Models out as equal-width columns so the lower widgets sit in
+    /// Lays Thermal (when not already filling a grid gap), Storage Volumes,
+    /// Local AI Models and Local AI Storage out as equal-width columns so the lower widgets sit in
     /// the visible viewport instead of stacking into a tall scroll. Falls back
     /// to a vertical stack on a narrow window.
     @ViewBuilder
@@ -298,7 +298,8 @@ struct DashboardView: View {
         let volumes = metricsManager.currentSnapshot?.disk.volumes ?? []
         let showVolumes  = layout.isVisible(.volumes) && !volumes.isEmpty
         let showLMStudio = layout.isVisible(.lmStudio)
-        let hasAny = includeThermal || showVolumes || showLMStudio
+        let showAIStorage = layout.isVisible(.aiStorage)
+        let hasAny = includeThermal || showVolumes || showLMStudio || showAIStorage
         let stacked = contentWidth < 720
 
         if hasAny {
@@ -313,6 +314,10 @@ struct DashboardView: View {
                 }
                 if showLMStudio {
                     aiBackendsSection
+                        .frame(maxWidth: .infinity)
+                }
+                if showAIStorage {
+                    AIStoragePanelView()
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -347,7 +352,7 @@ struct DashboardView: View {
         case .thermal:    thermalCard(emphasized: emphasized, compact: compact)
         case .power:      powerCard(emphasized: emphasized, compact: compact)
         case .frequency:  frequencyCard(emphasized: emphasized, compact: compact)
-        case .volumes, .lmStudio:
+        case .volumes, .lmStudio, .aiStorage:
             // Rendered in bottomPanelsRow, not in the grid.
             EmptyView()
         }

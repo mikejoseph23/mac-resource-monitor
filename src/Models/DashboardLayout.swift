@@ -3,7 +3,7 @@ import Combine
 
 enum DashboardWidget: String, CaseIterable, Identifiable {
     case cpu, memory, gpu, disk, diskIO, network, thermal, power, frequency
-    case volumes, lmStudio
+    case volumes, lmStudio, aiStorage
 
     var id: String { rawValue }
 
@@ -20,6 +20,7 @@ enum DashboardWidget: String, CaseIterable, Identifiable {
         case .frequency:  return "Frequency"
         case .volumes:    return "Storage Volumes"
         case .lmStudio:   return "Local AI Models"
+        case .aiStorage:  return "Local AI Storage"
         }
     }
 
