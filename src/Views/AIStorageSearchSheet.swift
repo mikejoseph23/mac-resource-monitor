@@ -125,6 +125,8 @@ struct AIStorageSearchSheet: View {
     }
 }
 
+#if DEBUG
 #Preview {
     AIStorageSearchSheet(model: AIStorageModel(previewSnapshot: .preview))
 }
+#endif

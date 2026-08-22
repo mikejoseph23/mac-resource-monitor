@@ -337,6 +337,8 @@ struct AIStoragePurgeSheet: View {
     }
 }
 
+#if DEBUG
 #Preview {
     AIStoragePurgeSheet(model: AIStorageModel(previewSnapshot: .preview))
 }
+#endif

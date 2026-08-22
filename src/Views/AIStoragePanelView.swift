@@ -271,8 +271,10 @@ func aiStorageFormatBytes(_ bytes: UInt64) -> String {
     return "\(bytes) B"
 }
 
+#if DEBUG
 #Preview {
     AIStoragePanelView(model: AIStorageModel(previewSnapshot: .preview))
         .padding()
         .frame(width: 400)
 }
+#endif
