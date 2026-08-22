@@ -9,119 +9,132 @@ Swift 5.9, SPM-based (`Package.swift`). Collection runs on a background `Collect
 actor; `MetricsManager` (`@MainActor`) publishes a `SystemSnapshot` every 2s. The only external
 dependency is **Sparkle** (auto-update). See `CLAUDE.md` for architecture + release process.
 
+The **Local AI Storage** panel is its own subsystem: `AIStorageCollector` (an `actor`) scans
+what LM Studio and oMLX retain on disk, deliberately off the 2s tick — its own cadence, a
+5-minute floor, every scan cancellable and off the main actor.
+
 ## Current Status
 
-**v1.2.1 is shipped, uploaded, and the Sparkle auto-update was tested end-to-end and works.**
-Nothing blocked. **5 commits are committed locally on `main` but NOT yet pushed** (`git status`
-shows `ahead 5`).
+**v1.4.0 is built, notarized, and pushed to LymeDeploy — it is NOT live yet.**
 
-- ✅ v1.2.1 released: notarized + stapled DMG, uploaded to `iadev.net/mac-resource-monitor/`,
-  Cloudflare cache purged for `appcast.xml`. **Auto-update verified working** (updated from 1.2.0).
-- ✅ Dashboard layout overhaul + Storage Volumes DMG-filter bug fix shipped in 1.2.1.
-- ✅ README updated to point at the download site + explain auto-update.
-- ⏳ **`git push` is still pending** — 5 unpushed commits (see below). Also tag once pushed:
-  `git tag v1.2.1 && git push --tags`.
+- Two read-only browsers shipped this session: **Explore logs** and **Explore chats**.
+- `main` is pushed through `a964b3e`. `swift build` clean (debug **and** release), `swift test`
+  **131 tests, 0 failures**.
+- **Blocked on you:** in LymeDeploy, create a release pinning `MacResourceMonitor.Downloads 1.4.0`
+  and deploy it to Production. Until that happens, `iadev.net/mac-resource-monitor/appcast.xml`
+  still advertises 1.3.0 and no user sees the update.
+- Untracked artifact `dist/MacResourceMonitor.Downloads.1.4.0.nupkg` is the pushed package —
+  safe to delete once the release is live. (`dist/upload/` is gitignored; this filename isn't.)
+- Visual sign-off of the new sheets was done by hand and never captured; no screenshot suite exists.
 
-## What Happened This Session (2026-07-19)
+## What's Done
 
-Triggered by a friend (RD) running v1.2.0 on an M5 Pro laptop and sending a screenshot. Fixes:
-
-1. **Storage Volumes bug** — the app's own mounted **DMG** was being listed as a drive.
-   `DiskCollector.collectVolumes()` now filters non-physical/system volumes via `URLResourceKey`
-   (`.volumeIsBrowsableKey`, `.volumeIsLocalKey`) + a `statfs` mount-flag check
-   (`MNT_RDONLY`/`MNT_DONTBROWSE` → excluded); boot volume `/` always kept.
-2. **Default dashboard rebalance** — the lone/orphaned Thermal card + dead space are gone;
-   Thermal placement is adaptive to card count.
-3. **Wider default window** — `900×700` → `1200×840` in `MacResourceMonitorApp.swift`.
-4. **Width cap + centering** — content capped at `contentMaxWidth = 1180pt` and centered so wide
-   windows get side margins instead of full-bleed sparse panels.
-5. **Top grid stretches to match bottom panels** — switched the card grid from a fixed measured
-   `unitColumnWidth` to equal-width flexible columns (`equalWidthRow`), killing the "upside-down-T".
-6. **Local Inference profile (`twoColumnLayout`)** — reworked from tall stacked columns into
-   horizontal bands (hero row Memory/GPU/Power + compact grid + bottom panels), and made cards
-   **equal height per row** via an `equalWidthRow(fillHeight:)` flag + a trailing `Spacer` in
-   `MetricCardView` (content pins to top, extra height becomes bottom padding; 0-height when not
-   stretched, so Default/MenuBar render identically).
-
-All layout changes are in `src/Views/DashboardView.swift` + `src/Views/MetricCardView.swift`;
-volume fix in `src/Services/DiskCollector.swift`; window size in `src/MacResourceMonitorApp.swift`.
-**35/35 tests pass.**
-
-## Unpushed Commits (on `main`, ahead 5)
-
-```
-686426d Update README with download site and auto-update info
-536782e Release 1.2.1: dashboard layout polish and Storage Volumes filtering
-9924369 Stretch default dashboard card grid to match bottom panel width
-e84b77b Stage landing page with release version in stage-release.sh   (from prior session)
-b5f7a05 Add landing page for the download folder                       (from prior session)
-```
+- **Explore logs** (`AIStorageLogsSheet`) — read-only browser over `~/.lmstudio/server-logs`,
+  `~/.lmstudio/conversations`, `~/.omlx/logs`. Month-sectioned newest-first list with an
+  All/30-day/7-day filter, SF Mono viewer, tail-first open (256 KB) with **byte-window paging**
+  backwards on scroll-up, raw/pretty JSON toggle, Reveal in Finder, directory watcher that
+  re-lists on change, full VoiceOver + keyboard (arrows move a cursor ring, Return opens).
+- **Explore chats** (`AIStorageChatsSheet` + `AIStorageChatParser`) — LM Studio GUI conversations
+  rendered as transcripts: roles, reasoning blocks collapsed by default, `debugInfoBlock` tucked
+  away, images inline (260×220) and click-to-enlarge (720×560).
+- **Read-only guarantees** — every path passes `AIStoragePathGuard.isReadable` after symlink
+  resolution; no write/delete/move API exists in either browser; neither triggers `rescan()`.
+- **Panel actions consolidated** into one ellipsis menu in the card header plus a right-click
+  context menu, with Purge divided off and marked `.destructive`.
+- **Release 1.4.0** — version bumped (`CFBundleShortVersionString` 1.4.0 / `CFBundleVersion` 5),
+  DMG signed + notarized + stapled, EdDSA signature verified against the staged DMG, appcast
+  release notes written, package pushed to LymeDeploy.
+- Test suite grew 35 → 131 (pure helpers, filesystem integration against an injectable root,
+  chat parsing).
 
 ## What's Next
 
-Nothing required. Open items when convenient:
+1. **Finish the release** — LymeDeploy: pin `MacResourceMonitor.Downloads 1.4.0` → deploy to
+   Production. Then confirm `https://iadev.net/mac-resource-monitor/appcast.xml` serves 1.4.0
+   (purge Cloudflare cache for that URL if it's stale) and check that an installed 1.3.0 offers
+   the update.
+2. **Add a release-config build to your definition of green.** Release builds were silently broken
+   from `31be0fb` until `fb5d04b` this session: three `#Preview` blocks referenced the
+   `#if DEBUG`-gated `AIStorageSnapshot.preview` without being gated themselves. `swift build` and
+   `swift test` are both debug, so nothing caught it — it only surfaced mid-release. Run
+   `swift build -c release` in CI or pre-commit.
+3. **Optional follow-ups** (none blocking):
+   - `AIStorageModel.listFiles` collapses errors *and* `CancellationError` into `[]` via `try?`,
+     so a genuinely failed walk renders as "No files here". Worth distinguishing.
+   - LM Studio's image sidecar `preview.data` is full-size bytes, not a downscale, so every
+     thumbnail decodes a full PNG. Invisible at 3 images; would matter at hundreds.
+   - The oMLX **Vision features** purge target's description says what the files are but not that
+     they're a re-derivable cache — the fact that makes the checkbox safe to tick.
+   - Reconstructing agentic/API conversations from `server-logs` was explicitly ruled out of
+     scope: that traffic never reaches `conversations/`, and long bodies are elided as
+     `<Truncated in logs>`, so it is lossy by nature. Best-effort only if you ever want it.
 
-1. **`git push`** the 5 unpushed commits, then `git tag v1.2.1 && git push --tags`.
-2. **Parked follow-ups from this session:**
-   - Hide/disable "Check for Updates…" in **debug builds** — `swift run` debug builds don't embed
-     `Sparkle.framework`, so the menu item throws an "Unable to Check For Updates / updater failed
-     to start" dialog on launch. Cosmetic; never happens in the notarized DMG. Gate the menu item
-     on a bundled/release build.
-   - **`stage-release.sh` should template the appcast `<title>`/`<description>`** — it only rewrites
-     the `<enclosure>`; the item title/notes are left as the prior version's text and had to be
-     hand-edited this release (title was still "1.2.0").
-3. Backlog next-ups (`BACKLOG.md`): customizable dashboard layouts, Ollama support.
+## Planning Docs
 
-## Cutting the Next Release (clean loop; see CLAUDE.md "Auto-update (Sparkle) & Release")
-
-1. Bump **both** `CFBundleShortVersionString` + `CFBundleVersion` in `src/Info.plist`.
-2. `SIGN_ID="Developer ID Application: INTERAPP DEVELOPMENT, INC. (UU626VCLYW)" NOTARIZE_PROFILE="mrm-notary" ./scripts/make-dmg.sh`
-3. `./scripts/stage-release.sh` (signs DMG + refreshes appcast + stages landing page → `dist/upload/`).
-4. Hand-edit the appcast `<title>` + `<description>` release notes (until the script is fixed — see follow-up above).
-5. Upload everything in `dist/upload/` to `iadev.net/mac-resource-monitor/`, then **purge the
-   Cloudflare cache for `appcast.xml`** (same URL, new content; versioned DMG URLs are fine).
-6. Commit the released appcast; `git tag vX.Y.Z && git push --tags`.
-
-## Distribution
-
-- **Website / landing page:** `https://iadev.net/mac-resource-monitor/` (`index.html`).
-- **Feed:** `https://iadev.net/mac-resource-monitor/appcast.xml` (`SUFeedURL` in `src/Info.plist`).
-- **DMG (current):** `https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.2.1.dmg` (versioned).
-- **EdDSA key:** private half in login Keychain (account `ed25519`, shared with LymeScribe —
-  Sparkle uses one key across apps); public half is `SUPublicEDKey` in `src/Info.plist`.
-- **Notary:** keychain profile `mrm-notary`, team `UU626VCLYW`. Cloudflare fronts `iadev.net`.
+- `local-llm-history-browser.md` — the Explore Logs execution plan. **All milestones complete**
+  (M1–M4, T1/T2/T4); T3 (screenshot + hands-on) was deliberately skipped in favour of manual
+  sign-off. Its Progress Log is the detailed history of this session.
+- `chat-history-viewer-prompt.md` — the self-contained brief that built the chat viewer. Carries
+  the surveyed LM Studio conversation/image JSON shapes; useful reference if you extend it.
+- `PLANNING.md`, `fable-review-remediation-plan.md`, `fable-review-july-17.md` — earlier,
+  completed work.
+- `BACKLOG.md` — next big item is **customizable dashboard layouts** (drag-reorder, per-widget
+  column span, saved scenarios), to grow out of `DashboardLayout`.
 
 ## Key File Paths
 
 ```
-src/
-  MacResourceMonitorApp.swift   App entry; MenuBarExtra, Settings, "Check for Updates…"; default 1200x840 window
-  Info.plist                    Source of truth: version (1.2.1 / build 3) + Sparkle SU* keys
-  Services/
-    DiskCollector.swift         collectVolumes() — filters DMG/read-only/non-physical volumes
-    UpdaterModel.swift          Wraps SPUStandardUpdaterController (menu + Settings toggle)
-    CollectionEngine.swift      Actor owning all collectors, runs collect() off-main
-    MetricsManager.swift        @MainActor; awaits engine.collect()
-  Views/
-    DashboardView.swift         Profiles: uniformGridLayout (Default) + twoColumnLayout (Local Inference); equalWidthRow(fillHeight:), 1180pt cap
-    MetricCardView.swift        Card; trailing Spacer(minLength:0) for equal-height rows
-    SettingsView.swift          General (updates toggle, launch-at-login, GPU override) + Widgets
-scripts/
-  make-dmg.sh                   Build → embed/sign Sparkle → laid-out DMG → sign → notarize
-  stage-release.sh              EdDSA-sign DMG + refresh appcast + stage dist/upload/  (title/notes still manual)
-  draw-dmg-background.swift     DMG background art (600x400 + @2x, LymeScribe-style)
-deploy/updates/                 Server mirror: appcast.xml, web.config, index.html, screenshot.png
-Tests/MacResourceMonitorTests/  35 tests
-dist/                           Build output (upload/ is the staged upload folder; *.dmg gitignored)
+src/Models/SystemMetrics.swift          AIStorageTarget/Snapshot/FileEntry + #if DEBUG fixtures
+src/Services/
+  AIStorageCollector.swift              actor: scan/search/purge + listFiles/readTail/readWindow/
+                                        readFull; injectable `root:`; AIStoragePathGuard,
+                                        AIStorageLogLayout, AIStorageTailReader live here
+  AIStorageChatParser.swift             pure conversation JSON → transcript view models
+  AIStorageModel.swift                  @MainActor wrappers, AIStorageFileContent (.ok/.denied/
+                                        .missingFile), own 5-min cadence
+src/Views/
+  AIStoragePanelView.swift              the card + the consolidated action menu
+  AIStorageLogsSheet.swift              log browser (windowed paging, dir watcher)
+  AIStorageChatsSheet.swift             chat transcript viewer
+  AIStorageSearchSheet.swift            "is my secret in here?" — paths + counts only
+  AIStoragePurgeSheet.swift             the only destructive surface — invariant: the destructive
+                                        control must not move under the pointer
+Tests/MacResourceMonitorTests/          131 tests; AIStorage* are this session's
+src/Info.plist                          SINGLE SOURCE OF TRUTH for version + SU* keys
+scripts/make-dmg.sh                     build → sign → notarize → staple
+scripts/stage-release.sh                EdDSA-sign + rewrite appcast → dist/upload/
+deploy/pack-for-lymedeploy.sh           pack dist/upload/ → .nupkg → push to LymeDeploy
+deploy/updates/appcast.xml              title + <description> are hand-written; everything else
+                                        is rewritten by stage-release.sh
+```
+
+## Recent Git Log
+
+```
+a964b3e Refresh appcast for the 1.4.0 release
+fb5d04b Gate the AI storage previews behind DEBUG so release builds compile
+835dcb3 Bump to 1.4.0 for the Explore logs and Explore chats browsers
+a9dd122 Consolidate the AI storage panel actions into one menu
+76ab272 Render LM Studio conversations as readable transcripts
+123e8ac Add execution plan for the Explore Logs browser
+5ecc60c Page the log browser and finish its accessibility pass
+e534fc6 Wire the Explore Logs browser to the real collector read APIs
 ```
 
 ## Any Other Notes
 
-- **Build/test:** `swift build`, `swift test` (35 green), `swift run MacResourceMonitor`.
-- **Sparkle framework:** `swift build` does NOT embed it; `make-dmg.sh` copies it and adds the
-  `@executable_path/../Frameworks` rpath. Sign inside-out (XPC → Autoupdate → Updater.app →
-  framework → app); no `--deep`. Debug `swift run` builds therefore can't launch the updater.
-- **Appcast invariant:** never upload with the placeholder `edSignature`/`length` —
-  `stage-release.sh` fills them from the notarized DMG; must match the shipped bytes.
-- **Working-tree noise:** `RESUME.md` + `fable-review-remediation-plan.md` are untracked working
-  files; `dist/MacResourceMonitor-v1.2.*.dmg` are rebuildable artifacts (gitignored).
+- **Build/run:** `swift build` · `swift build -c release` · `swift test` · `swift run MacResourceMonitor`
+- **Release:** bump **both** version keys in `src/Info.plist`, hand-write the appcast `<title>` +
+  `<description>`, then `make-dmg.sh` → `stage-release.sh` → `pack-for-lymedeploy.sh`.
+  `make-dmg.sh` needs `SIGN_ID="Developer ID Application: INTERAPP DEVELOPMENT, INC. (UU626VCLYW)"`
+  and `NOTARIZE_PROFILE="mrm-notary"`. The Sparkle EdDSA private key lives in the login Keychain,
+  never in the repo.
+- **Gotcha — piping release scripts:** `./scripts/make-dmg.sh | tail` reports *tail's* exit code,
+  so a failed build looks like success. Use `set -o pipefail` or don't pipe.
+- **Gotcha — filesystem tests:** plant fixture roots under the package's `.build/`, never `/tmp`
+  or `/var/folders`. Those sit behind macOS's `/private` symlinks, and
+  `URL.resolvingSymlinksInPath()` then disagrees with the directory enumerator's raw paths, which
+  makes the root guard fail spuriously.
+- **Real data scale on this machine:** `~/.lmstudio/server-logs` is ~29 GB across ~3080 `.log`
+  files rotated at ~10 MB; `~/.omlx/cache` is ~148 GB. Anything that walks these must be lazy,
+  cancellable, and must never read a whole file eagerly.
