@@ -10,6 +10,7 @@ struct AIStoragePanelView: View {
 
     @State private var showingPurge = false
     @State private var showingSearch = false
+    @State private var showingExplore = false
 
     /// Re-rendered every tick by the dashboard, so "last scanned" ages on its
     /// own without a second timer here.
@@ -55,6 +56,9 @@ struct AIStoragePanelView: View {
         }
         .sheet(isPresented: $showingSearch) {
             AIStorageSearchSheet(model: model)
+        }
+        .sheet(isPresented: $showingExplore) {
+            AIStorageLogsSheet(model: model)
         }
     }
 
@@ -195,6 +199,10 @@ struct AIStoragePanelView: View {
         HStack {
             Button("Search retained text…") { showingSearch = true }
                 .controlSize(.small)
+            Button("Explore logs…") { showingExplore = true }
+                .controlSize(.small)
+                .disabled(model.snapshot?.containsExplorable != true)
+                .help("Read the retained logs and conversations — read-only")
             Spacer()
             Button("Purge…") { showingPurge = true }
                 .controlSize(.small)
