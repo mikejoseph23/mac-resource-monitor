@@ -14,6 +14,11 @@ No external dependencies — all metrics collected via macOS system APIs (Mach, 
 
 Requires macOS 14.0+ (Sonoma). Swift 5.9+. SPM-based (Package.swift).
 
+Release DMGs are **universal (arm64 + x86_64)** — `make-dmg.sh` builds with
+`--arch arm64 --arch x86_64` and copies the fat binary from
+`.build/apple/Products/Release/`. Intel Macs get CPU/memory/disk/network/process
+metrics; power (IOReport) is nil and GPU/Neural Engine core counts are 0 there.
+
 There is no test suite yet.
 
 ## Architecture

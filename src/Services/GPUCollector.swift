@@ -116,6 +116,7 @@ final class GPUCollector {
     }
 
     private static func neuralEngineCoreCount(for chip: String) -> Int {
+        guard Architecture.isAppleSilicon else { return 0 }   // Intel Macs have no ANE
         // All current Apple Silicon has a 16-core Neural Engine; Ultra variants
         // fuse two dies and double it to 32. Older A-series could be lower, but
         // we target macOS 14+ / Apple Silicon Macs, so 16/32 covers the field.
@@ -127,6 +128,7 @@ final class GPUCollector {
         // Kept in sync manually as new chips ship; unlisted chips (e.g. a
         // future M5 family) fall through to the tier-based estimate below
         // rather than a hard 0.
+        guard Architecture.isAppleSilicon else { return 0 }   // Intel: don't fabricate a count
         let lower = chip.lowercased()
         if lower.contains("m3 ultra") { return 80 }
         if lower.contains("m2 ultra") { return 76 }

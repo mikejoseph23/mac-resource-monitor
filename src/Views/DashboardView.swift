@@ -456,7 +456,7 @@ struct DashboardView: View {
                 ("Active Cores", String(format: "%.0f / %d", activeCores, coreCount), nil),
                 ("Chip", snapshot?.gpu.chipName ?? "Apple Silicon", nil),
                 ("Total Cores", "\(coreCount)", nil),
-                ("Neural Engine", "\(snapshot?.gpu.neuralEngineCoreCount ?? 16) cores", nil),
+                ("Neural Engine", (snapshot?.gpu.neuralEngineCoreCount ?? 0) > 0 ? "\(snapshot?.gpu.neuralEngineCoreCount ?? 0) cores" : "—", nil),
             ],
             emphasized: emphasized,
             compact: compact,

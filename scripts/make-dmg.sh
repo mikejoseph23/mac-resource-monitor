@@ -63,12 +63,12 @@ echo "==> Cleaning $DIST"
 rm -rf "$APP" "$DMG" "$ZIP" "$SCRATCH" "$RW_DMG"
 mkdir -p "$DIST"
 
-echo "==> swift build -c release"
-swift build -c release >/dev/null
+echo "==> swift build -c release (universal: arm64 + x86_64)"
+swift build -c release --arch arm64 --arch x86_64 >/dev/null
 
 echo "==> Assembling .app bundle (v$VERSION)"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
-cp ".build/arm64-apple-macosx/release/$BIN_NAME" "$APP/Contents/MacOS/$BIN_NAME"
+cp ".build/apple/Products/Release/$BIN_NAME" "$APP/Contents/MacOS/$BIN_NAME"
 cp src/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # src/Info.plist is the single source of truth (version, Sparkle SU* keys,
 # CFBundleExecutable/IconFile) — copy it rather than regenerating inline.
