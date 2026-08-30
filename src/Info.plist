@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>Mac Resource Monitor</string>
 	<key>CFBundleDisplayName</key>
 	<string>Mac Resource Monitor</string>
 	<key>CFBundleExecutable</key>
@@ -12,24 +10,22 @@
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.mikejoseph.mac-resource-monitor</string>
-	<key>CFBundleVersion</key>
-	<string>5</string>
+	<key>CFBundleName</key>
+	<string>Mac Resource Monitor</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.4.0</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
+	<string>1.4.1</string>
+	<key>CFBundleVersion</key>
+	<string>6</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
-	<!-- Sparkle auto-update. Feed + DMG served from iadev.net/mac-resource-monitor/.
-	     SUPublicEDKey is the public half of the EdDSA key whose private half lives
-	     in the login Keychain ("Private key for signing Sparkle updates", account
-	     "ed25519"); scripts/stage-release.sh signs each DMG with sign_update. -->
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>https://iadev.net/mac-resource-monitor/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>pWnZ8xqfdmXz442htqe9Hwh8miCUuw0H1JVNaItI9EA=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>14400</integer>
 </dict>

@@ -6,8 +6,12 @@
     <description>Mac Resource Monitor update feed</description>
     <language>en</language>
     <item>
-      <title>Mac Resource Monitor 1.4.0</title>
+      <title>Mac Resource Monitor 1.4.1</title>
       <description><![CDATA[
+        <ul>
+          <li>New: <b>Intel Mac support</b> — the app now ships as a universal binary, so it runs on Intel Macs on macOS 14 or later. Power draw and per-chip stats that depend on Apple Silicon hardware are simply hidden there.</li>
+        </ul>
+        <p><i>Since 1.4.0:</i></p>
         <ul>
           <li>New: <b>Explore logs</b> — a read-only browser for what LM Studio and oMLX retain on disk. Server logs are grouped by month and filterable to the last 7 or 30 days; large logs open at the end and page backwards as you scroll, so even a multi-gigabyte file stays responsive.</li>
           <li>New: <b>Explore chats</b> — LM Studio's saved conversations rendered as readable transcripts instead of raw JSON, with reasoning folded away, timings tucked out of the way, and images shown inline and click-to-enlarge.</li>
@@ -15,17 +19,17 @@
           <li>The Local AI Storage panel's actions now live in a single menu on the card, with Purge set apart from the read-only browsers.</li>
         </ul>
       ]]></description>
-      <pubDate>Sat, 22 Aug 2026 18:51:07 +0000</pubDate>
+      <pubDate>Sun, 30 Aug 2026 18:04:52 +0000</pubDate>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <!-- edSignature + length are filled in by scripts/stage-release.sh at
            release time (EdDSA-signs the notarized DMG). Never upload with the
            placeholder below — Sparkle rejects a mismatched signature. -->
       <enclosure
-        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.4.0.dmg"
-        sparkle:version="5"
-        sparkle:shortVersionString="1.4.0"
-        sparkle:edSignature="yTD0pCZQVVvGDwdHqFy/cLJApg0b5mn8ztdKFWh+CN7CxX2RzxvDdCqWhS7hTtrAKLQdGd57GFPAcMNJ3U1CDA=="
-        length="3751518"
+        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.4.1.dmg"
+        sparkle:version="6"
+        sparkle:shortVersionString="1.4.1"
+        sparkle:edSignature="ABHaT23tdaqBwibXtnJ38yQKi6KWXVkf0ZZ6J/jfKOGoVakU0nF/dhRRB0X8xi34rwkkgCADm3HO+VytVOX9BA=="
+        length="5020235"
         type="application/octet-stream" />
     </item>
   </channel>
