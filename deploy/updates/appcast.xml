@@ -6,9 +6,10 @@
     <description>Mac Resource Monitor update feed</description>
     <language>en</language>
     <item>
-      <title>Mac Resource Monitor 1.4.1</title>
+      <title>Mac Resource Monitor 1.4.2</title>
       <description><![CDATA[
         <ul>
+          <li>Fixed: Gatekeeper no longer reports the app as unverified on a fresh download (the bundle was missing its package-type declaration).</li>
           <li>New: <b>Intel Mac support</b> — the app now ships as a universal binary, so it runs on Intel Macs on macOS 14 or later. Power draw and per-chip stats that depend on Apple Silicon hardware are simply hidden there.</li>
         </ul>
         <p><i>Since 1.4.0:</i></p>
@@ -19,17 +20,17 @@
           <li>The Local AI Storage panel's actions now live in a single menu on the card, with Purge set apart from the read-only browsers.</li>
         </ul>
       ]]></description>
-      <pubDate>Sun, 30 Aug 2026 18:04:52 +0000</pubDate>
+      <pubDate>Sun, 30 Aug 2026 18:09:32 +0000</pubDate>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <!-- edSignature + length are filled in by scripts/stage-release.sh at
            release time (EdDSA-signs the notarized DMG). Never upload with the
            placeholder below — Sparkle rejects a mismatched signature. -->
       <enclosure
-        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.4.1.dmg"
-        sparkle:version="6"
-        sparkle:shortVersionString="1.4.1"
-        sparkle:edSignature="ABHaT23tdaqBwibXtnJ38yQKi6KWXVkf0ZZ6J/jfKOGoVakU0nF/dhRRB0X8xi34rwkkgCADm3HO+VytVOX9BA=="
-        length="5020235"
+        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.4.2.dmg"
+        sparkle:version="7"
+        sparkle:shortVersionString="1.4.2"
+        sparkle:edSignature="ZZJik3Rp7sihS8hUTgeCDl/GQ6pTqGkM552Od6hDH0+AMsmfw7lLN2Xb/T0o38co66DvtF/TM8gAsKmRLXveCg=="
+        length="5020292"
         type="application/octet-stream" />
     </item>
   </channel>
