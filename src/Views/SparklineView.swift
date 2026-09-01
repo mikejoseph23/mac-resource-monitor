@@ -7,10 +7,14 @@ struct SparklineView: View {
     let fixedRange: (min: Double, max: Double)?
     let timeRangeSeconds: TimeInterval?
     var valueFormatter: ((Double) -> String)?
-    /// Draws faint min/max scale labels in the corners. Auto-ranged sparklines
-    /// otherwise render a flat-low series identically to a flat-high one, so the
-    /// labels are what tell you *which* level the line is sitting at.
+    /// Draws min/max scale labels in a reserved left gutter. Auto-ranged
+    /// sparklines otherwise render a flat-low series identically to a flat-high
+    /// one, so the labels are what tell you *which* level the line is sitting at.
     var showScaleLabels: Bool
+
+    /// Width of the axis gutter the plot is inset by so the scale labels never
+    /// sit on top of the line.
+    private let gutterWidth: CGFloat = 36
 
     @State private var hoverIndex: Int?
 
@@ -57,9 +61,11 @@ struct SparklineView: View {
                 let dataSpan = now.timeIntervalSince(data.first!.0)
                 let effectiveDuration = timeRangeSeconds ?? max(dataSpan, 1)
                 let effectiveStart = now.addingTimeInterval(-effectiveDuration)
+                let gutter: CGFloat = showScaleLabels ? min(gutterWidth, geometry.size.width * 0.25) : 0
+                let plotWidth = max(geometry.size.width - gutter, 1)
                 let xPositions: [CGFloat] = data.map { point in
                     let elapsed = point.0.timeIntervalSince(effectiveStart)
-                    return geometry.size.width * CGFloat(elapsed / effectiveDuration)
+                    return gutter + plotWidth * CGFloat(elapsed / effectiveDuration)
                 }
 
                 ZStack(alignment: .topLeading) {
@@ -67,7 +73,7 @@ struct SparklineView: View {
                     ForEach([0.25, 0.5, 0.75, 1.0], id: \.self) { fraction in
                         let y = geometry.size.height - CGFloat(fraction) * geometry.size.height
                         Path { path in
-                            path.move(to: CGPoint(x: 0, y: y))
+                            path.move(to: CGPoint(x: gutter, y: y))
                             path.addLine(to: CGPoint(x: geometry.size.width, y: y))
                         }
                         .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
@@ -110,19 +116,19 @@ struct SparklineView: View {
                         sparklineTooltip(index: idx, x: x, containerWidth: geometry.size.width)
                     }
 
-                    // Min/max scale labels (top-left = ceiling, bottom-left =
-                    // floor). Anchored to the empty left gutter so they never
-                    // sit under the right-anchored line. Hidden while hovering
-                    // so the tooltip owns the readout.
-                    if showScaleLabels && hoverIndex == nil {
-                        VStack(alignment: .leading, spacing: 0) {
+                    // Min/max scale labels (top = ceiling, bottom = floor) live
+                    // in a reserved gutter to the left of the plot, so they can
+                    // never collide with the line. Hidden while hovering so the
+                    // tooltip owns the readout.
+                    if showScaleLabels && gutter > 0 && hoverIndex == nil {
+                        VStack(alignment: .trailing, spacing: 0) {
                             scaleLabel(maxVal)
                             Spacer(minLength: 0)
                             if maxVal - minVal > 0.001 {
                                 scaleLabel(minVal)
                             }
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(width: gutter, height: geometry.size.height, alignment: .topTrailing)
                     }
                 }
                 .onContinuousHover { phase in
@@ -192,12 +198,8 @@ struct SparklineView: View {
             .font(.system(size: 8, weight: .medium, design: .rounded))
             .foregroundStyle(.tertiary)
             .lineLimit(1)
-            .padding(.horizontal, 3)
-            .padding(.vertical, 0.5)
-            .background(
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(.background.opacity(0.55))
-            )
+            .minimumScaleFactor(0.7)
+            .padding(.trailing, 4)
     }
 
     private func defaultFormat(_ value: Double) -> String {
