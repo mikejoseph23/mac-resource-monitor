@@ -6,31 +6,28 @@
     <description>Mac Resource Monitor update feed</description>
     <language>en</language>
     <item>
-      <title>Mac Resource Monitor 1.4.2</title>
+      <title>Mac Resource Monitor 1.4.3</title>
       <description><![CDATA[
         <ul>
-          <li>Fixed: Gatekeeper no longer reports the app as unverified on a fresh download (the bundle was missing its package-type declaration).</li>
-          <li>New: <b>Intel Mac support</b> — the app now ships as a universal binary, so it runs on Intel Macs on macOS 14 or later. Power draw and per-chip stats that depend on Apple Silicon hardware are simply hidden there.</li>
+          <li>Fixed: the graphs on the dashboard cards now keep their scale labels in a dedicated column to the left of the plot, so the numbers no longer sit on top of the line and become unreadable once a card has a full history.</li>
         </ul>
-        <p><i>Since 1.4.0:</i></p>
+        <p><i>Since 1.4.1:</i></p>
         <ul>
-          <li>New: <b>Explore logs</b> — a read-only browser for what LM Studio and oMLX retain on disk. Server logs are grouped by month and filterable to the last 7 or 30 days; large logs open at the end and page backwards as you scroll, so even a multi-gigabyte file stays responsive.</li>
-          <li>New: <b>Explore chats</b> — LM Studio's saved conversations rendered as readable transcripts instead of raw JSON, with reasoning folded away, timings tucked out of the way, and images shown inline and click-to-enlarge.</li>
-          <li>Both browsers are strictly read-only: they can open and search what is stored, and can never modify or delete it.</li>
-          <li>The Local AI Storage panel's actions now live in a single menu on the card, with Purge set apart from the read-only browsers.</li>
+          <li>Fixed: Gatekeeper no longer reports the app as unverified on a fresh download.</li>
+          <li>New: <b>Intel Mac support</b> — the app ships as a universal binary, so it runs on Intel Macs on macOS 14 or later. Power draw and per-chip stats that depend on Apple Silicon hardware are simply hidden there.</li>
         </ul>
       ]]></description>
-      <pubDate>Sun, 30 Aug 2026 18:09:32 +0000</pubDate>
+      <pubDate>Tue, 01 Sep 2026 04:30:33 +0000</pubDate>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <!-- edSignature + length are filled in by scripts/stage-release.sh at
            release time (EdDSA-signs the notarized DMG). Never upload with the
            placeholder below — Sparkle rejects a mismatched signature. -->
       <enclosure
-        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.4.2.dmg"
-        sparkle:version="7"
-        sparkle:shortVersionString="1.4.2"
-        sparkle:edSignature="ZZJik3Rp7sihS8hUTgeCDl/GQ6pTqGkM552Od6hDH0+AMsmfw7lLN2Xb/T0o38co66DvtF/TM8gAsKmRLXveCg=="
-        length="5020292"
+        url="https://iadev.net/mac-resource-monitor/MacResourceMonitor-v1.4.3.dmg"
+        sparkle:version="8"
+        sparkle:shortVersionString="1.4.3"
+        sparkle:edSignature="ecgMnXuxgn3czGJIU/yVHDksvY0vENS9QCfwHicp3X3K54ZdxOcNCeOd72dRbNuTw1RKAIiTgzQONJKapb40BQ=="
+        length="5018515"
         type="application/octet-stream" />
     </item>
   </channel>
