@@ -17,6 +17,9 @@ xcuserdata/
 *.app/
 *.zip
 
+# Squirrel/Downloads packages, regenerated per release
+dist/*.nupkg
+
 # Release staging scratch (versioned DMGs are kept; these are throwaway)
 dist/upload/
 dist/.dmg-scratch/
